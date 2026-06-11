@@ -1,107 +1,250 @@
-# IAM Role Cleanup Utility
+# IAM Role Cleanup Utility - Single AWS Account
 
 ## Overview
 
-This utility automates IAM role cleanup within an AWS account using a CSV-based input. It reads the list of IAM roles, processes them in parallel, and removes associated dependencies before deleting the roles.
+IAM Role Cleanup Utility is a Python-based automation tool designed to perform bulk IAM role cleanup within an AWS account.
 
-The solution was built to support large-scale IAM cleanup activities while maintaining safety, visibility, and error reporting.
+The utility reads role information from a CSV file, validates the target account, removes role dependencies, and deletes IAM roles using configurable parallel execution. It also supports dry-run validation and detailed error reporting to ensure safe execution.
 
-## Features
+This implementation is intended for profile-based execution against a single AWS account.
 
-* CSV-driven role processing
-* Parallel role execution using configurable worker threads
-* Automatic removal of:
+---
 
-  * Managed policy attachments
-  * Inline policies
-  * Instance profile associations
-* Exponential backoff for throttling scenarios
-* Error reporting through CSV export
-* Dry-run support for validation before execution
-* Account verification before execution
+## Architecture
+
+![Single Account Architecture](docs/architecture-single-account.png)
+
+---
+
+## Key Features
+
+- CSV-driven role processing
+- Parallel role deletion using worker threads
+- Dry-run mode for validation before execution
+- Automatic cleanup of role dependencies
+- Retry handling for throttling scenarios
+- Error collection and CSV reporting
+- AWS account validation before execution
+- Modular and extensible code structure
+
+---
+
+## Dependency Cleanup
+
+Before deleting a role, the utility automatically removes associated dependencies:
+
+- Attached managed policies
+- Inline policies
+- Instance profile associations
+
+This prevents common IAM deletion failures caused by existing role dependencies.
+
+---
 
 ## Project Structure
 
-config/
+```text
+.
+├── cfn/
+│   └── iam-role-cleanup.yaml
+│
+├── config/
+│   └── settings.py
+│
+├── modules/
+│   ├── auth.py
+│   ├── csv_reader.py
+│   ├── error_collector.py
+│   ├── executor.py
+│   ├── iam_cleaner.py
+│   └── logger.py
+│
+├── tests/
+│   ├── test_auth.py
+│   └── test_csv_reader.py
+│
+├── main.py
+├── requirements.txt
+└── README.md
+```
 
-* Application configuration
+---
 
-modules/
+## Input Format
 
-* Authentication
-* CSV parsing
-* IAM cleanup logic
-* Execution engine
-* Logging
-* Error collection
+The utility expects a CSV file containing IAM role information.
 
-tests/
+Example:
 
-* Validation utilities
+```csv
+AccountId,Name
+123456789012,SampleRoleA
+123456789012,SampleRoleB
+123456789012,SampleRoleC
+```
 
-main.py
+A sample file is provided under:
 
-* Application entry point
+```text
+dummy-inputs/dummy_roles.csv
+```
 
-## Execution Flow
+---
 
-1. Authenticate using an AWS profile.
-2. Validate the connected AWS account.
-3. Read role information from the input CSV.
-4. Process roles using configurable parallel workers.
-5. Remove dependencies associated with each role.
-6. Delete roles.
-7. Generate an error report for failed operations.
+## Authentication
+
+Authentication is performed using an AWS profile configured through AWS Login.
+
+Example:
+
+```bash
+aws login --profile non-prod-admin
+```
+
+The profile name is configured in:
+
+```python
+config/settings.py
+```
+
+Example:
+
+```python
+AWS_PROFILE = "non-prod-admin"
+```
+
+---
 
 ## Configuration
 
-Key settings are managed through:
+Application behavior is controlled through:
 
+```python
 config/settings.py
+```
 
-Examples:
+Important parameters:
 
-* AWS Profile
-* Dry Run Mode
-* Worker Counts
-* Retry Settings
-* Input CSV Path
+```python
+ACCOUNT_WORKERS
+ROLE_WORKERS
+MAX_RETRY_ATTEMPTS
+BASE_BACKOFF_SECONDS
+DRY_RUN
+AWS_PROFILE
+INPUT_CSV
+```
+
+---
+
+## Execution Flow
+
+```text
+AWS Profile Authentication
+            ↓
+Account Validation
+            ↓
+CSV Parsing
+            ↓
+Parallel Role Processing
+            ↓
+Dependency Cleanup
+            ↓
+Role Deletion
+            ↓
+Error Reporting
+```
+
+---
 
 ## Running the Utility
 
-Validate execution:
+### Validate Access
 
 ```bash
-python3 main.py
+python3 tests/test_auth.py
 ```
 
-For safety, begin with:
+### Validate CSV Parsing
+
+```bash
+python3 -m tests.test_csv_reader
+```
+
+### Dry Run
 
 ```python
 DRY_RUN = True
 ```
 
-After validation:
+```bash
+python3 main.py
+```
+
+### Actual Execution
 
 ```python
 DRY_RUN = False
 ```
 
+```bash
+python3 main.py
+```
+
+---
+
 ## Error Reporting
 
-Failures are captured in:
+Failed operations are captured in:
 
+```text
 output/role_deletion_errors.csv
+```
 
-This report includes:
+The report contains:
 
-* Account ID
-* Role Name
-* Error Type
-* Error Message
+- Timestamp
+- Account ID
+- Role Name
+- Error Type
+- Error Message
 
-## Current Implementation
+This allows failed roles to be reviewed and retried separately if required.
 
-The current implementation is designed for profile-based execution against a single AWS account.
+---
 
-Future enhancements may introduce cross-account execution using AWS STS AssumeRole and multi-account orchestration.
+## Validation Performed
+
+The implementation has been validated for:
+
+- CSV-driven role processing
+- Profile-based AWS authentication
+- IAM role dependency cleanup
+- Parallel role execution
+- Dry-run validation
+- Error reporting workflow
+- IAM role deletion within a target AWS account
+
+---
+
+## CloudFormation Template
+
+A CloudFormation template is included under:
+
+```text
+cfn/iam-role-cleanup.yaml
+```
+
+The template provisions an IAM role with the permissions required to perform IAM role cleanup activities.
+
+---
+
+## Current Scope
+
+This branch supports:
+
+- Single AWS account execution
+- AWS profile-based authentication
+- Bulk IAM role cleanup from CSV input
+
+Future enhancements such as cross-account execution and STS AssumeRole workflows are maintained separately from this implementation.
