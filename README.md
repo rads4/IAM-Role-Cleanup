@@ -12,7 +12,13 @@ This implementation is intended for profile-based execution against a single AWS
 
 ## Architecture
 
-![Single Account Architecture](docs/architecture-single-account.png)
+<p align="center">
+  <img src="docs/architecture-single-account.png" alt="Single Account Architecture" width="1000"/>
+</p>
+
+<p align="center">
+  Single-account IAM role cleanup workflow using AWS Login profile authentication.
+</p>
 
 ---
 
