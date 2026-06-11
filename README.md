@@ -57,6 +57,9 @@ This prevents common IAM deletion failures caused by existing role dependencies.
 ├── config/
 │   └── settings.py
 │
+├── docs/
+│   └── architecture-single-account.png
+│
 ├── modules/
 │   ├── auth.py
 │   ├── csv_reader.py
