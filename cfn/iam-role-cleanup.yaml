@@ -1,0 +1,52 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Least Privilege IAM Role Cleanup Operator
+
+Resources:
+  IAMRoleCleanup:
+    Type: AWS::IAM::Role
+
+    Properties:
+      RoleName: IAMRoleCleanup
+
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+
+        Statement:
+          - Effect: Allow
+
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+
+            Action:
+              - sts:AssumeRole
+
+      Policies:
+        - PolicyName: IAMRoleCleanupPolicy
+
+          PolicyDocument:
+            Version: "2012-10-17"
+
+            Statement:
+              - Sid: RoleCleanupPermissions
+
+                Effect: Allow
+
+                Action:
+                  - iam:GetRole
+                  - iam:ListRoles
+                  - iam:ListAttachedRolePolicies
+                  - iam:DetachRolePolicy
+                  - iam:ListRolePolicies
+                  - iam:DeleteRolePolicy
+                  - iam:ListInstanceProfilesForRole
+                  - iam:RemoveRoleFromInstanceProfile
+                  - iam:DeleteRole
+
+                Resource: "*"
+
+Outputs:
+  RoleArn:
+    Description: IAM Role Cleanup Role ARN
+
+    Value: !GetAtt IAMRoleCleanup.Arn
