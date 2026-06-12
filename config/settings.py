@@ -13,3 +13,5 @@ ERROR_REPORT_PREFIX = "role_deletion_errors"
 DRY_RUN = False
 
 AWS_PROFILE = "non-prod-admin"
+
+BACKUP_DIR = "backups"
