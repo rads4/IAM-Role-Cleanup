@@ -3,7 +3,7 @@ import os
 import threading
 
 from datetime import datetime
-
+from zoneinfo import ZoneInfo
 
 class RoleBackupManager:
 
@@ -28,8 +28,13 @@ class RoleBackupManager:
             exist_ok=True
         )
 
-        timestamp = datetime.utcnow().strftime(
-            "%Y%m%d_%H%M%S"
+        timestamp = (
+            datetime.now(
+                ZoneInfo("Asia/Kolkata")
+            )
+            .strftime(
+                "%Y-%m-%d_%I-%M-%p_IST"
+            )
         )
 
         self.backup_file = os.path.join(

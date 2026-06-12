@@ -35,6 +35,7 @@ def process_role(
     role_name,
     logger,
     error_collector,
+    backup_manager,
     total_roles
 ):
 
@@ -43,14 +44,17 @@ def process_role(
     try:
 
         logger.info(
-            f"Processing role: {role_name}"
+            f"Processing role: "
+            f"{role_name}"
         )
 
-        delete_role_fully(
-            iam_client,
-            account_id,
-            role_name,
-            DRY_RUN
+        result = delete_role_fully(
+            iam_client=iam_client,
+            account_id=account_id,
+            role_name=role_name,
+            backup_manager=backup_manager,
+            error_collector=error_collector,
+            dry_run=DRY_RUN
         )
 
         with progress_lock:
@@ -64,20 +68,17 @@ def process_role(
             )
 
         logger.info(
-            f"Completed role: {role_name}"
+            f"Completed role: "
+            f"{role_name} "
+            f"({result})"
         )
 
     except Exception as e:
 
-        error_collector.add(
-            account_id,
-            role_name,
-            type(e).__name__,
-            str(e)
-        )
-
         logger.error(
-            f"Failed role: {role_name}"
+            f"Failed role: "
+            f"{role_name} "
+            f"({str(e)})"
         )
 
 
@@ -86,6 +87,7 @@ def process_account(
     roles,
     logger,
     error_collector,
+    backup_manager,
     total_roles
 ):
 
@@ -108,6 +110,7 @@ def process_account(
                 role,
                 logger,
                 error_collector,
+                backup_manager,
                 total_roles
             )
 
@@ -117,12 +120,14 @@ def process_account(
         for future in as_completed(
             futures
         ):
+
             future.result()
 
 
 def execute(
     grouped_roles,
-    logger
+    logger,
+    backup_manager
 ):
 
     error_collector = (
@@ -147,6 +152,7 @@ def execute(
                 roles,
                 logger,
                 error_collector,
+                backup_manager,
                 total_roles
             )
 

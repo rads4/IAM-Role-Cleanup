@@ -2,9 +2,11 @@ from modules.csv_reader import load_roles
 from modules.executor import execute
 from modules.logger import get_logger
 from modules.auth import get_account_session
+from modules.role_backup import RoleBackupManager
 
 from config.settings import (
-    INPUT_CSV
+    INPUT_CSV,
+    BACKUP_DIR
 )
 
 
@@ -70,6 +72,7 @@ def main():
     sample_roles = []
 
     for roles in grouped_roles.values():
+
         sample_roles.extend(
             roles[:5]
         )
@@ -79,10 +82,34 @@ def main():
         f"{sample_roles}"
     )
 
+    #
+    # Backup Manager
+    #
+
+    backup_manager = (
+        RoleBackupManager(
+            BACKUP_DIR
+        )
+    )
+
+    logger.info(
+        f"Backup file initialized: "
+        f"{backup_manager.get_backup_file_path()}"
+    )
+
+    #
+    # Execute Cleanup
+    #
+
     error_collector = execute(
         grouped_roles,
-        logger
+        logger,
+        backup_manager
     )
+
+    #
+    # Error Report
+    #
 
     if error_collector.count():
 
@@ -95,10 +122,27 @@ def main():
             f"{error_collector.count()}"
         )
 
+    #
+    # Summary
+    #
+
+    error_collector.print_summary(
+        logger,
+        backup_manager.get_backup_file_path()
+    )
+
+    if error_collector.count():
+
+        logger.info(
+            "Execution completed "
+            "with errors"
+        )
+
     else:
 
         logger.info(
-            "Execution completed successfully"
+            "Execution completed "
+            "successfully"
         )
 
 

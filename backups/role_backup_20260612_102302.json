@@ -1,0 +1,254 @@
+{
+  "CK-Test-EKS-LoadBalancer-Controller-Role": {
+    "path": "/",
+    "description": "EKS LB Controller",
+    "max_session_duration": 43200,
+    "trust_policy": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "ec2.amazonaws.com"
+          },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    },
+    "managed_policies": [
+      {
+        "PolicyArn": "arn:aws:iam::aws:policy/ElasticLoadBalancingFullAccess",
+        "PolicyName": "ElasticLoadBalancingFullAccess"
+      }
+    ],
+    "inline_policies": {},
+    "instance_profiles": []
+  },
+  "CK-Test-Assessment-Role": {
+    "path": "/",
+    "description": "Assessment role",
+    "max_session_duration": 3600,
+    "trust_policy": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "ec2.amazonaws.com"
+          },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    },
+    "managed_policies": [
+      {
+        "PolicyArn": "arn:aws:iam::aws:policy/ReadOnlyAccess",
+        "PolicyName": "ReadOnlyAccess"
+      }
+    ],
+    "inline_policies": {},
+    "instance_profiles": []
+  },
+  "CK-Test-Analytics-BE-Service-Role": {
+    "path": "/service-role/",
+    "description": "Analytics backend",
+    "max_session_duration": 7200,
+    "trust_policy": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "ec2.amazonaws.com"
+          },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    },
+    "managed_policies": [
+      {
+        "PolicyArn": "arn:aws:iam::aws:policy/CloudWatchReadOnlyAccess",
+        "PolicyName": "CloudWatchReadOnlyAccess"
+      },
+      {
+        "PolicyArn": "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+        "PolicyName": "AmazonS3ReadOnlyAccess"
+      }
+    ],
+    "inline_policies": {},
+    "instance_profiles": [
+      {
+        "InstanceProfileName": "CK-Test-Analytics-BE-Service-Profile"
+      }
+    ]
+  },
+  "CK-Test-NetworkOne": {
+    "path": "/application/",
+    "description": "",
+    "max_session_duration": 14400,
+    "trust_policy": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "ec2.amazonaws.com"
+          },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    },
+    "managed_policies": [
+      {
+        "PolicyArn": "arn:aws:iam::aws:policy/ReadOnlyAccess",
+        "PolicyName": "ReadOnlyAccess"
+      }
+    ],
+    "inline_policies": {},
+    "instance_profiles": []
+  },
+  "CK-Test-Tuner-Role": {
+    "path": "/application/",
+    "description": "",
+    "max_session_duration": 3600,
+    "trust_policy": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "ec2.amazonaws.com"
+          },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    },
+    "managed_policies": [
+      {
+        "PolicyArn": "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+        "PolicyName": "AmazonS3ReadOnlyAccess"
+      }
+    ],
+    "inline_policies": {
+      "TunerInlinePolicy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:ListBucket"
+            ],
+            "Resource": "*"
+          }
+        ]
+      }
+    },
+    "instance_profiles": []
+  },
+  "CK-Test-Analytics-Data-ECS-Service-Role": {
+    "path": "/service-role/",
+    "description": "",
+    "max_session_duration": 3600,
+    "trust_policy": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "ec2.amazonaws.com"
+          },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    },
+    "managed_policies": [],
+    "inline_policies": {
+      "AnalyticsInlinePolicy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "logs:CreateLogGroup",
+              "logs:CreateLogStream",
+              "logs:PutLogEvents"
+            ],
+            "Resource": "*"
+          }
+        ]
+      }
+    },
+    "instance_profiles": []
+  },
+  "CK-Test-AlmaConnect": {
+    "path": "/service-role/",
+    "description": "Role with everything",
+    "max_session_duration": 10800,
+    "trust_policy": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "ec2.amazonaws.com"
+          },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    },
+    "managed_policies": [
+      {
+        "PolicyArn": "arn:aws:iam::aws:policy/CloudWatchReadOnlyAccess",
+        "PolicyName": "CloudWatchReadOnlyAccess"
+      },
+      {
+        "PolicyArn": "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+        "PolicyName": "AmazonS3ReadOnlyAccess"
+      }
+    ],
+    "inline_policies": {
+      "AlmaInlinePolicy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "sqs:ListQueues"
+            ],
+            "Resource": "*"
+          }
+        ]
+      }
+    },
+    "instance_profiles": [
+      {
+        "InstanceProfileName": "CK-Test-AlmaConnect-Profile"
+      }
+    ]
+  },
+  "CK-Test-CloudFormation-Execution-Role": {
+    "path": "/service-role/",
+    "description": "CloudFormation execution role",
+    "max_session_duration": 3600,
+    "trust_policy": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "ec2.amazonaws.com"
+          },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    },
+    "managed_policies": [
+      {
+        "PolicyArn": "arn:aws:iam::aws:policy/AdministratorAccess",
+        "PolicyName": "AdministratorAccess"
+      }
+    ],
+    "inline_policies": {},
+    "instance_profiles": []
+  }
+}
