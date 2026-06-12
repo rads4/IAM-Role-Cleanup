@@ -23,15 +23,12 @@ output/
 # OS
 .DS_Store
 
-archive/
-
 inputs/*.csv
 !inputs/dummy_roles.csv
 
 output/
 
-bootstrap_project.py
+/recreate_test_roles.py
 
-recreate_test_roles.py
-
-test_cfn_role.pytest_auth.py
+/test_cfn_role.py
+/test_auth.py

@@ -1,11 +1,11 @@
-from modules.auth import get_account_session
-
-session = get_account_session(
-    "851043415728"
+from modules.auth import (
+    get_account_session
 )
 
-sts = session.client("sts")
+session = get_account_session()
 
 print(
-    sts.get_caller_identity()
+    session.client(
+        "sts"
+    ).get_caller_identity()
 )
