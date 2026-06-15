@@ -32,3 +32,7 @@ output/
 
 /test_cfn_role.py
 /test_auth.py
+
+/cfn/iam-role-cleanup.yaml
+
+/backups
