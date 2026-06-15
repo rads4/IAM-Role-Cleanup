@@ -190,7 +190,7 @@ def main():
     )
 
     credentials_csv = select_file(
-        "dummy-inputs",
+        "inputs",
         "account_credentials.csv",
         "Credential Files"
     )
