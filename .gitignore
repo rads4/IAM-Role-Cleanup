@@ -34,3 +34,5 @@ output/
 /test_auth.py
 
 /backups
+
+/cfn
