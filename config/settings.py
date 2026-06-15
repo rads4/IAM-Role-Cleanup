@@ -10,7 +10,7 @@ ERROR_REPORT_PREFIX = (
     "role_deletion_errors"
 )
 
-DRY_RUN = True
+DRY_RUN = False
 
 BACKUP_DIR = "backups"
 

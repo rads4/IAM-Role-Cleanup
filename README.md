@@ -1,312 +1,259 @@
-# IAM Role Cleanup with Backup & Recovery - Single Account
+# IAM Role Cleanup - Backup & Restore (Multi-Account)
 
 ## Overview
 
-This implementation extends the IAM Role Cleanup framework by introducing backup and recovery capabilities before role deletion, suited for single aws account only.
+This branch extends the IAM Role Cleanup utility with backup and restoration capabilities while introducing support for multi-account execution.
 
-Prior to removing any IAM role, the framework captures and stores all metadata required to recreate the role later. This ensures that deleted roles can be restored if required while maintaining the existing cleanup workflow.
+Before any role deletion is performed, the script captures the complete IAM role configuration and stores it in a backup file. The backup can later be used to recreate deleted roles, including trust relationships and policy attachments.
 
-The current implementation is designed for single-account execution using AWS Profile based authentication and has been validated through end-to-end testing.
+The current implementation is designed for local execution using AWS profiles. Jenkins-based AssumeRole execution will be implemented separately.
+
+---
+
+## Key Capabilities
+
+| Capability                   | Supported |
+| ---------------------------- | --------- |
+| Single Account Execution     | Yes       |
+| Multi-Account Execution      | Yes       |
+| Automatic Role Backup        | Yes       |
+| Role Restoration             | Yes       |
+| Parallel Account Processing  | Yes       |
+| Parallel Role Processing     | Yes       |
+| Profile-Based Authentication | Yes       |
+| Dry Run Support              | Yes       |
+
+---
+
+## Solution Flow
+
+### Backup & Delete Flow
+
+```text
+Role CSV
+    │
+    ▼
+Account Mapping
+    │
+    ▼
+AWS Profile Resolution
+    │
+    ▼
+Backup Role Configuration
+    │
+    ▼
+Detach Policies
+    │
+    ▼
+Remove Instance Profile Associations
+    │
+    ▼
+Delete Role
+```
+
+### Restore Flow
+
+```text
+Backup File
+    │
+    ▼
+Select Account(s)
+    │
+    ▼
+Select Role(s)
+    │
+    ▼
+Create IAM Role
+    │
+    ▼
+Attach Managed Policies
+    │
+    ▼
+Restore Inline Policies
+    │
+    ▼
+(Optional) Restore Instance Profiles
+```
 
 ---
 
 ## Architecture
 
-<p align="center">
-  <img src="docs/architecture-backup-and-restore.png" alt="Cleanup, Backup and Restoration Architecture" width="1000"/>
-</p>
-
-<p align="center">
-  IAM Role Backup, Cleanup & Restoration Flow
-</p>
+![Architecture](docs/architecture-multi-account-backup-and-restore.png)
 
 ---
 
-## Features
+## Backup Structure
 
-### Role Backup
+A single backup file is generated for each execution.
 
-Before deletion, the framework captures:
+The backup contains:
 
-- Trust Policy
-- Managed Policy Attachments
-- Inline Policies
-- Instance Profile Associations
-- Role Path
-- Role Description
-- Max Session Duration
+* Backup metadata
+* Account information
+* Role definitions
+* Trust policies
+* Managed policy attachments
+* Inline policies
+* Instance profile associations
 
----
-
-### Safe Deletion Workflow
-
-A role is deleted only after:
-
-1. Metadata is captured successfully
-2. Backup validation passes
-3. Backup is written successfully
-
-If backup creation fails, deletion is skipped.
-
----
-
-### Incremental Backup Persistence
-
-Backups are written incrementally during execution.
-
-Benefits:
-
-- Prevents loss of captured data if execution stops midway
-- Supports long-running cleanup operations
-- Allows recovery from partial execution failures
-
----
-
-### Timestamp-Based Backups
-
-Backup files are generated automatically and stored separately.
-
-Example:
-
-```text
-backups/
-└── role_backup_2026-06-12_15-53-08_IST.json
-```
-
-This prevents previous backups from being overwritten and allows historical recovery.
-
----
-
-### Parallel Role Processing
-
-The framework supports concurrent role cleanup using configurable worker pools.
-
-Configuration:
-
-```python
-ACCOUNT_WORKERS
-ROLE_WORKERS
-```
-
-Current implementation:
-
-```text
-Single Account
-Parallel Role Cleanup
-```
-
----
-
-### Dependency Cleanup
-
-Before role deletion, the framework removes:
-
-#### Managed Policies
-
-```python
-detach_role_policy()
-```
-
-#### Inline Policies
-
-```python
-delete_role_policy()
-```
-
-#### Instance Profile Associations
-
-```python
-remove_role_from_instance_profile()
-```
-
-#### Role
-
-```python
-delete_role()
-```
-
----
-
-### Retry Mechanism
-
-The cleanup process includes retry handling with exponential backoff for throttling and rate limit related failures.
-
-Configuration:
-
-```python
-MAX_RETRY_ATTEMPTS
-BASE_BACKOFF_SECONDS
-```
-
----
-
-### Error Reporting
-
-Execution failures are captured with detailed context including:
-
-- Account ID
-- Role Name
-- Stage
-- Operation
-- Error Type
-- Error Message
-- Timestamp
-
-Output:
-
-```text
-output/role_deletion_errors.csv
-```
-
----
-
-### Execution Summary
-
-At the end of execution, a summary is generated showing:
-
-```text
-BACKUP Success=x Failed=y
-DELETE Success=x Failed=y
-RESTORE Success=x Failed=y
-SKIPPED x
-```
-
----
-
-## Backup File Structure
-
-Example:
+Example structure:
 
 ```json
 {
-  "RoleName": {
-    "path": "/",
-    "description": "Example role",
-    "max_session_duration": 3600,
-    "trust_policy": {},
-    "managed_policies": [],
-    "inline_policies": {},
-    "instance_profiles": []
+  "backup_metadata": {
+    "created_at": "...",
+    "total_accounts": 1,
+    "total_roles": 8
+  },
+  "accounts": {
+    "123456789012": {
+      "roles": {}
+    }
   }
 }
 ```
 
 ---
 
-## Role Restoration
+## Input Files
 
-A separate utility is provided to recreate deleted roles from backup files.
-
-### Restore All Roles
-
-```bash
-python3 restore_roles.py backups/<backup-file>.json
-```
-
-### Restore Selected Roles
-
-```bash
-python3 restore_roles.py \
-backups/<backup-file>.json \
---roles RoleA,RoleB
-```
-
-### Dry Run
-
-```bash
-python3 restore_roles.py \
-backups/<backup-file>.json \
---dry-run
-```
-
-### Restore Instance Profile Associations
-
-```bash
-python3 restore_roles.py \
-backups/<backup-file>.json \
---restore-profiles
-```
-
----
-
-## Configuration
-
-Configuration values are managed through:
+### Role Input
 
 ```text
-config/settings.py
+dummy-inputs/
+└── poc_roles.csv
 ```
 
-Key parameters:
+Example:
 
-```python
-ACCOUNT_WORKERS
-ROLE_WORKERS
-MAX_RETRY_ATTEMPTS
-BASE_BACKOFF_SECONDS
-INPUT_CSV
-AWS_PROFILE
-DRY_RUN
+```csv
+AccountId,AccountCategory,Type,Name
+123456789012,POC,Role,SampleRole
+```
+
+### Account Credentials
+
+```text
+inputs/
+└── account_credentials.csv
+```
+
+Example:
+
+```csv
+AccountId,AccessKeyId,SecretAccessKey,Region,Permission
+123456789012,XXXX,XXXX,ap-south-1,admin
+```
+
+Profiles are automatically created using:
+
+```text
+<AccountId>-<Permission>
+```
+
+Example:
+
+```text
+123456789012-admin
 ```
 
 ---
 
-## Execution
+## Execution Model
 
-### Dry Run
+### Account-Level Parallelism
 
-```python
-DRY_RUN = True
-```
+Multiple accounts can be processed concurrently.
 
-```bash
-python3 main.py
-```
+### Role-Level Parallelism
 
-Captures and validates backups without deleting roles.
+Within each account, roles are processed concurrently.
+
+This reduces overall execution time for large IAM cleanup operations.
 
 ---
 
-### Actual Cleanup
+## Restore Options
 
-```python
-DRY_RUN = False
-```
+The restore utility supports:
 
-```bash
-python3 main.py
-```
+* Restoring all accounts
+* Restoring a specific account
+* Restoring all roles from an account
+* Restoring selected roles
 
-Performs backup, dependency cleanup, and role deletion.
+Dry-run mode is available for validation before actual restoration.
 
 ---
 
-## Validation Performed
+## Local Testing
 
-The implementation has been validated for:
+POC testing can be performed using:
 
-- Metadata Backup
-- Backup Persistence
-- Parallel Execution
-- Dependency Cleanup
-- Role Deletion
-- Role Restoration
-- Managed Policy Recovery
-- Inline Policy Recovery
-- Instance Profile Recovery
-- Path Restoration
-- Description Restoration
-- Max Session Duration Restoration
+```text
+dummy-inputs/poc_roles.csv
+```
+
+and a corresponding credentials file.
+
+This allows validation of:
+
+* Backup generation
+* Role deletion
+* Role restoration
+* Multi-account processing logic
+
+without requiring Jenkins integration.
 
 ---
 
 ## Current Scope
 
-Supported:
+Included in this branch:
 
-- AWS Profile Based Authentication
-- Single Account Execution
-- Parallel Role Cleanup
-- Backup & Recovery
+* Multi-account support
+* Profile-based authentication
+* Backup generation
+* Role restoration
+* Parallel execution
+
+Not included in this branch:
+
+* Jenkins integration
+* Cross-account AssumeRole execution
+* Automated IAM cleaner role creation
+* Operator account orchestration
+
+These capabilities will be implemented in a dedicated Jenkins/AssumeRole branch.
 
 ---
+
+## Output Artifacts
+
+### Backup Files
+
+```text
+backups/
+```
+
+Generated before role deletion.
+
+### Error Reports
+
+```text
+output/
+```
+
+Generated when failures occur during backup, deletion, or restoration.
+
+---
+
+## Safety Controls
+
+* Backup captured before deletion
+* Dry-run support
+* Retry handling for throttling
+* Error reporting with CSV output
+* Role existence validation before restore
+* Thread-safe backup persistence

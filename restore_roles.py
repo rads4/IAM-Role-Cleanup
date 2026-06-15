@@ -1,6 +1,10 @@
-import argparse
 import json
 import sys
+from pathlib import Path
+
+from botocore.exceptions import (
+    ClientError
+)
 
 from modules.auth import (
     build_auth_config,
@@ -9,10 +13,6 @@ from modules.auth import (
 
 from modules.logger import (
     get_logger
-)
-
-from botocore.exceptions import (
-    ClientError
 )
 
 
@@ -141,8 +141,108 @@ def restore_role(
     return "restored"
 
 
+def select_backup_file():
+
+    backup_dir = Path(
+        "backups"
+    )
+
+    backup_files = sorted(
+        backup_dir.glob(
+            "*.json"
+        ),
+        reverse=True
+    )
+
+    if not backup_files:
+
+        raise Exception(
+            "No backup files found"
+        )
+
+    print(
+        "\nAvailable Backup Files:\n"
+    )
+
+    for index, file in enumerate(
+        backup_files,
+        start=1
+    ):
+
+        print(
+            f"{index}. "
+            f"{file.name}"
+        )
+
+    while True:
+
+        choice = input(
+            "\nSelect Backup: "
+        ).strip()
+
+        try:
+
+            return str(
+                backup_files[
+                    int(choice) - 1
+                ]
+            )
+
+        except (
+            ValueError,
+            IndexError
+        ):
+
+            print(
+                "Invalid selection"
+            )
+
+
+def select_restore_mode():
+
+    print(
+        "\nRestore Mode\n"
+    )
+
+    print(
+        "1. All Accounts -> All Roles"
+    )
+
+    print(
+        "2. All Accounts -> Selected Roles"
+    )
+
+    print(
+        "3. Selected Account -> All Roles"
+    )
+
+    print(
+        "4. Selected Account -> Selected Roles"
+    )
+
+    while True:
+
+        choice = input(
+            "\nSelect: "
+        ).strip()
+
+        if choice in [
+            "1",
+            "2",
+            "3",
+            "4"
+        ]:
+
+            return choice
+
+        print(
+            "Invalid selection"
+        )
+
+
 def select_accounts(
-    backup_data
+    backup_data,
+    mode
 ):
 
     accounts = sorted(
@@ -150,6 +250,13 @@ def select_accounts(
             "accounts"
         ].keys()
     )
+
+    if mode in [
+        "1",
+        "2"
+    ]:
+
+        return accounts
 
     print(
         "\nAvailable Accounts:\n"
@@ -165,62 +272,169 @@ def select_accounts(
             f"{account_id}"
         )
 
-    print(
-        "\n0. Restore All"
+    while True:
+
+        choice = input(
+            "\nSelect Account: "
+        ).strip()
+
+        try:
+
+            return [
+                accounts[
+                    int(choice) - 1
+                ]
+            ]
+
+        except (
+            ValueError,
+            IndexError
+        ):
+
+            print(
+                "Invalid selection"
+            )
+
+
+def select_roles(
+    backup_data,
+    selected_accounts,
+    mode
+):
+
+    if mode in [
+        "1",
+        "3"
+    ]:
+
+        return None
+
+    all_roles = set()
+
+    for account_id in selected_accounts:
+
+        roles = (
+            backup_data[
+                "accounts"
+            ][
+                account_id
+            ][
+                "roles"
+            ]
+        )
+
+        all_roles.update(
+            roles.keys()
+        )
+
+    all_roles = sorted(
+        all_roles
     )
 
+    print(
+        "\nAvailable Roles:\n"
+    )
+
+    for index, role in enumerate(
+        all_roles,
+        start=1
+    ):
+
+        print(
+            f"{index}. "
+            f"{role}"
+        )
+
     choice = input(
-        "\nSelect: "
+        "\nEnter role numbers "
+        "(comma separated): "
     ).strip()
 
-    if choice == "0":
+    selected = set()
 
-        return accounts
+    for item in choice.split(
+        ","
+    ):
 
-    return [
-        accounts[
-            int(choice) - 1
-        ]
-    ]
+        selected.add(
+            all_roles[
+                int(item.strip()) - 1
+            ]
+        )
+
+    return selected
+
+
+def ask_yes_no(
+    question
+):
+
+    while True:
+
+        answer = input(
+            f"\n{question} "
+            f"(y/n): "
+        ).strip().lower()
+
+        if answer in [
+            "y",
+            "yes"
+        ]:
+
+            return True
+
+        if answer in [
+            "n",
+            "no"
+        ]:
+
+            return False
 
 
 def main():
 
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument(
-        "backup_file"
-    )
-
-    parser.add_argument(
-        "--roles"
-    )
-
-    parser.add_argument(
-        "--restore-profiles",
-        action="store_true"
-    )
-
-    parser.add_argument(
-        "--dry-run",
-        action="store_true"
-    )
-
-    args = parser.parse_args()
-
     logger = get_logger()
 
+    backup_file = (
+        select_backup_file()
+    )
+
     with open(
-        args.backup_file
+        backup_file
     ) as file:
 
         backup_data = json.load(
             file
         )
 
+    mode = (
+        select_restore_mode()
+    )
+
     selected_accounts = (
         select_accounts(
-            backup_data
+            backup_data,
+            mode
+        )
+    )
+
+    selected_roles = (
+        select_roles(
+            backup_data,
+            selected_accounts,
+            mode
+        )
+    )
+
+    restore_profiles = (
+        ask_yes_no(
+            "Restore Instance Profiles?"
+        )
+    )
+
+    dry_run = (
+        ask_yes_no(
+            "Dry Run?"
         )
     )
 
@@ -228,22 +442,10 @@ def main():
 
     for account_id in selected_accounts:
 
-        permission = input(
-            f"\nPermission "
-            f"suffix for "
-            f"{account_id} "
-            f"(admin): "
-        ).strip()
-
-        if not permission:
-
-            permission = "admin"
-
         account_profiles[
             account_id
         ] = (
-            f"{account_id}-"
-            f"{permission}"
+            f"{account_id}-admin"
         )
 
     auth_config = (
@@ -251,19 +453,6 @@ def main():
             account_profiles
         )
     )
-
-    selected_roles = None
-
-    if args.roles:
-
-        selected_roles = set(
-
-            role.strip()
-
-            for role in args.roles.split(
-                ","
-            )
-        )
 
     restored = 0
     skipped = 0
@@ -316,10 +505,10 @@ def main():
                     metadata,
 
                     restore_profiles=
-                    args.restore_profiles,
+                    restore_profiles,
 
                     dry_run=
-                    args.dry_run,
+                    dry_run,
 
                     logger=
                     logger
