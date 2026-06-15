@@ -25,6 +25,7 @@ output/
 
 inputs/*.csv
 !inputs/dummy_roles.csv
+inputs/account_credentials.csv
 
 output/
 

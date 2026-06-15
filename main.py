@@ -1,4 +1,5 @@
 from pathlib import Path
+import csv
 
 from modules.csv_reader import load_roles
 
@@ -7,13 +8,16 @@ from modules.executor import execute
 from modules.logger import get_logger
 
 from modules.auth import (
-    get_available_profiles,
-    build_local_auth_config,
-    build_assume_role_auth_config
+    build_auth_config
 )
 
 from modules.role_backup import (
     RoleBackupManager
+)
+
+from modules.profile_manager import (
+    create_profile,
+    profile_exists
 )
 
 from config.settings import (
@@ -21,56 +25,55 @@ from config.settings import (
 )
 
 
-def select_csv():
+def select_file(
+    directory,
+    pattern,
+    title
+):
 
-    csv_files = []
+    path = Path(
+        directory
+    )
 
-    for directory in [
-        "inputs",
-        "dummy-inputs"
-    ]:
-
-        path = Path(directory)
-
-        if path.exists():
-
-            csv_files.extend(
-                sorted(
-                    path.glob(
-                        "*.csv"
-                    )
-                )
-            )
-
-    if not csv_files:
+    if not path.exists():
 
         raise Exception(
-            "No CSV files found"
+            f"{directory} not found"
+        )
+
+    files = sorted(
+        path.glob(pattern)
+    )
+
+    if not files:
+
+        raise Exception(
+            f"No {title} found"
         )
 
     print(
-        "\nAvailable CSV Files:\n"
+        f"\nAvailable {title}:\n"
     )
 
     for index, file in enumerate(
-        csv_files,
+        files,
         start=1
     ):
 
         print(
-            f"{index}. {file}"
+            f"{index}. {file.name}"
         )
 
     while True:
 
         choice = input(
-            "\nSelect CSV: "
+            "\nSelect: "
         ).strip()
 
         try:
 
             return str(
-                csv_files[
+                files[
                     int(choice) - 1
                 ]
             )
@@ -85,197 +88,133 @@ def select_csv():
             )
 
 
-def select_execution_mode():
-
-    print(
-        "\nExecution Mode\n"
-    )
-
-    print(
-        "1. Local Profile"
-    )
-
-    print(
-        "2. Assume Role"
-    )
-
-    while True:
-
-        choice = input(
-            "\nSelect Mode: "
-        ).strip()
-
-        if choice == "1":
-
-            return "LOCAL"
-
-        if choice == "2":
-
-            return "ASSUME_ROLE"
-
-        print(
-            "Invalid selection"
-        )
-
-
-def select_profile():
-
-    profiles = (
-        get_available_profiles()
-    )
-
-    if not profiles:
-
-        raise Exception(
-            "No AWS profiles found"
-        )
-
-    print(
-        "\nAvailable AWS Profiles:\n"
-    )
-
-    for index, profile in enumerate(
-        profiles,
-        start=1
-    ):
-
-        print(
-            f"{index}. {profile}"
-        )
-
-    while True:
-
-        choice = input(
-            "\nSelect Profile: "
-        ).strip()
-
-        try:
-
-            return profiles[
-                int(choice) - 1
-            ]
-
-        except (
-            ValueError,
-            IndexError
-        ):
-
-            print(
-                "Invalid selection"
-            )
-
-
-def build_local_mapping(
-    accounts
+def load_credentials(
+    credentials_file
 ):
 
     account_profiles = {}
 
-    for account_id in sorted(
-        accounts
-    ):
+    with open(
+        credentials_file
+    ) as file:
 
-        print(
-            f"\nAccount: "
-            f"{account_id}"
+        reader = csv.DictReader(
+            file
         )
 
-        profile = (
-            select_profile()
-        )
+        for row in reader:
 
-        account_profiles[
-            account_id
-        ] = profile
+            account_id = (
+                row[
+                    "AccountId"
+                ].strip()
+            )
 
-    return (
-        build_local_auth_config(
-            account_profiles
-        )
-    )
+            permission = (
+                row[
+                    "Permission"
+                ].strip()
+            )
+
+            profile_name = (
+                f"{account_id}-"
+                f"{permission}"
+            )
+
+            if not profile_exists(
+                profile_name
+            ):
+
+                create_profile(
+                    profile_name=
+                    profile_name,
+
+                    access_key=
+                    row[
+                        "AccessKeyId"
+                    ].strip(),
+
+                    secret_key=
+                    row[
+                        "SecretAccessKey"
+                    ].strip(),
+
+                    region=
+                    row[
+                        "Region"
+                    ].strip()
+                )
+
+            account_profiles[
+                account_id
+            ] = profile_name
+
+    return account_profiles
 
 
-def build_assume_role_mapping(
-    accounts
+def validate_accounts(
+    grouped_roles,
+    account_profiles
 ):
 
-    print(
-        "\nBase Profile "
-        "(Operator Account)"
-    )
+    missing_accounts = []
 
-    base_profile = (
-        select_profile()
-    )
+    for account_id in grouped_roles:
 
-    account_roles = {}
-
-    for account_id in sorted(
-        accounts
-    ):
-
-        role_arn = input(
-            f"\nRole ARN for "
-            f"{account_id}: "
-        ).strip()
-
-        account_roles[
+        if (
             account_id
-        ] = role_arn
+            not in account_profiles
+        ):
 
-    return (
-        build_assume_role_auth_config(
-            account_roles,
-            base_profile
+            missing_accounts.append(
+                account_id
+            )
+
+    if missing_accounts:
+
+        raise Exception(
+            "Missing credentials for "
+            f"accounts: "
+            f"{missing_accounts}"
         )
-    )
 
 
 def main():
 
     logger = get_logger()
 
-    selected_csv = (
-        select_csv()
+    roles_csv = select_file(
+        "dummy-inputs",
+        "*roles*.csv",
+        "Role CSV Files"
+    )
+
+    credentials_csv = select_file(
+        "dummy-inputs",
+        "account_credentials.csv",
+        "Credential Files"
     )
 
     grouped_roles = load_roles(
-        selected_csv
+        roles_csv
     )
 
-    accounts = list(
-        grouped_roles.keys()
-    )
-
-    logger.info(
-        f"CSV Selected: "
-        f"{selected_csv}"
-    )
-
-    logger.info(
-        f"Accounts Found: "
-        f"{accounts}"
-    )
-
-    mode = (
-        select_execution_mode()
-    )
-
-    if mode == "LOCAL":
-
-        auth_config = (
-            build_local_mapping(
-                accounts
-            )
+    account_profiles = (
+        load_credentials(
+            credentials_csv
         )
+    )
 
-    else:
+    validate_accounts(
+        grouped_roles,
+        account_profiles
+    )
 
-        auth_config = (
-            build_assume_role_mapping(
-                accounts
-            )
+    auth_config = (
+        build_auth_config(
+            account_profiles
         )
+    )
 
     total_roles = sum(
         len(v)
@@ -285,12 +224,17 @@ def main():
 
     logger.info(
         f"Accounts found: "
-        f"{len(accounts)}"
+        f"{len(grouped_roles)}"
     )
 
     logger.info(
         f"Total roles: "
         f"{total_roles}"
+    )
+
+    logger.info(
+        f"Profiles loaded: "
+        f"{len(account_profiles)}"
     )
 
     backup_manager = (
@@ -324,4 +268,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()

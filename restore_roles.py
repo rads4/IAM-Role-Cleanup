@@ -2,14 +2,17 @@ import argparse
 import json
 import sys
 
-from botocore.exceptions import ClientError
-
 from modules.auth import (
-    get_account_session
+    build_auth_config,
+    get_session
 )
 
 from modules.logger import (
     get_logger
+)
+
+from botocore.exceptions import (
+    ClientError
 )
 
 
@@ -61,111 +64,28 @@ def restore_role(
 
     if dry_run:
 
-        managed_policy_count = len(
-            metadata[
-                "managed_policies"
-            ]
-        )
-
-        inline_policy_count = len(
-            metadata[
-                "inline_policies"
-            ]
-        )
-
-        instance_profile_count = len(
-            metadata[
-                "instance_profiles"
-            ]
-        )
-
         logger.info(
-            "=" * 60
-        )
-
-        logger.info(
-            f"DRY RUN: {role_name}"
-        )
-
-        logger.info(
-            f"Path: "
-            f"{metadata['path']}"
-        )
-
-        logger.info(
-            f"Description: "
-            f"{metadata['description']}"
-        )
-
-        logger.info(
-            f"MaxSessionDuration: "
-            f"{metadata['max_session_duration']}"
-        )
-
-        logger.info(
-            f"Managed Policies: "
-            f"{managed_policy_count}"
-        )
-
-        logger.info(
-            f"Inline Policies: "
-            f"{inline_policy_count}"
-        )
-
-        logger.info(
-            f"Instance Profiles: "
-            f"{instance_profile_count}"
-        )
-
-        logger.info(
-            "Would create role"
-        )
-
-        logger.info(
-            "Would attach managed policies"
-        )
-
-        logger.info(
-            "Would recreate inline policies"
-        )
-
-        if restore_profiles:
-
-            logger.info(
-                "Would restore instance profile associations"
-            )
-
-        logger.info(
-            "=" * 60
+            f"DRY RUN -> "
+            f"{role_name}"
         )
 
         return "dry_run"
 
-    create_role_kwargs = {
-        "RoleName":
-        role_name,
-
-        "Path":
-        metadata["path"],
-
-        "Description":
-        metadata["description"],
-
-        "MaxSessionDuration":
-        metadata[
+    iam_client.create_role(
+        RoleName=role_name,
+        Path=metadata["path"],
+        Description=metadata[
+            "description"
+        ],
+        MaxSessionDuration=metadata[
             "max_session_duration"
         ],
-
-        "AssumeRolePolicyDocument":
+        AssumeRolePolicyDocument=
         json.dumps(
             metadata[
                 "trust_policy"
             ]
         )
-    }
-
-    iam_client.create_role(
-        **create_role_kwargs
     )
 
     for policy in metadata[
@@ -200,13 +120,18 @@ def restore_role(
             "instance_profiles"
         ]:
 
-            iam_client.add_role_to_instance_profile(
-                InstanceProfileName=
-                profile[
-                    "InstanceProfileName"
-                ],
-                RoleName=role_name
-            )
+            try:
+
+                iam_client.add_role_to_instance_profile(
+                    InstanceProfileName=
+                    profile[
+                        "InstanceProfileName"
+                    ],
+                    RoleName=role_name
+                )
+
+            except Exception:
+                pass
 
     logger.info(
         f"Restored role: "
@@ -214,6 +139,49 @@ def restore_role(
     )
 
     return "restored"
+
+
+def select_accounts(
+    backup_data
+):
+
+    accounts = sorted(
+        backup_data[
+            "accounts"
+        ].keys()
+    )
+
+    print(
+        "\nAvailable Accounts:\n"
+    )
+
+    for index, account_id in enumerate(
+        accounts,
+        start=1
+    ):
+
+        print(
+            f"{index}. "
+            f"{account_id}"
+        )
+
+    print(
+        "\n0. Restore All"
+    )
+
+    choice = input(
+        "\nSelect: "
+    ).strip()
+
+    if choice == "0":
+
+        return accounts
+
+    return [
+        accounts[
+            int(choice) - 1
+        ]
+    ]
 
 
 def main():
@@ -242,12 +210,6 @@ def main():
 
     logger = get_logger()
 
-    session = get_account_session()
-
-    iam_client = session.client(
-        "iam"
-    )
-
     with open(
         args.backup_file
     ) as file:
@@ -255,6 +217,40 @@ def main():
         backup_data = json.load(
             file
         )
+
+    selected_accounts = (
+        select_accounts(
+            backup_data
+        )
+    )
+
+    account_profiles = {}
+
+    for account_id in selected_accounts:
+
+        permission = input(
+            f"\nPermission "
+            f"suffix for "
+            f"{account_id} "
+            f"(admin): "
+        ).strip()
+
+        if not permission:
+
+            permission = "admin"
+
+        account_profiles[
+            account_id
+        ] = (
+            f"{account_id}-"
+            f"{permission}"
+        )
+
+    auth_config = (
+        build_auth_config(
+            account_profiles
+        )
+    )
 
     selected_roles = None
 
@@ -270,65 +266,100 @@ def main():
         )
 
     restored = 0
-
     skipped = 0
-
     failed = 0
 
-    for (
-        role_name,
-        metadata
-    ) in backup_data.items():
+    for account_id in selected_accounts:
 
-        if (
-            selected_roles
-            and role_name
-            not in selected_roles
-        ):
+        session = get_session(
+            auth_config,
+            account_id
+        )
 
-            continue
+        iam_client = session.client(
+            "iam"
+        )
 
-        try:
+        roles = (
+            backup_data[
+                "accounts"
+            ][
+                account_id
+            ][
+                "roles"
+            ]
+        )
 
-            result = restore_role(
-                iam_client=iam_client,
-                role_name=role_name,
-                metadata=metadata,
-                restore_profiles=args.restore_profiles,
-                dry_run=args.dry_run,
-                logger=logger
-            )
+        for (
+            role_name,
+            metadata
+        ) in roles.items():
 
-            if result == "restored":
+            if (
+                selected_roles
+                and role_name
+                not in selected_roles
+            ):
 
-                restored += 1
+                continue
 
-            else:
+            try:
 
-                skipped += 1
+                result = restore_role(
+                    iam_client=
+                    iam_client,
 
-        except Exception as e:
+                    role_name=
+                    role_name,
 
-            failed += 1
+                    metadata=
+                    metadata,
 
-            logger.error(
-                f"{role_name}: {str(e)}"
-            )
+                    restore_profiles=
+                    args.restore_profiles,
+
+                    dry_run=
+                    args.dry_run,
+
+                    logger=
+                    logger
+                )
+
+                if result == "restored":
+
+                    restored += 1
+
+                else:
+
+                    skipped += 1
+
+            except Exception as e:
+
+                failed += 1
+
+                logger.error(
+                    f"{account_id} | "
+                    f"{role_name} | "
+                    f"{str(e)}"
+                )
 
     logger.info(
         "=" * 60
     )
 
     logger.info(
-        f"Restored: {restored}"
+        f"Restored: "
+        f"{restored}"
     )
 
     logger.info(
-        f"Skipped: {skipped}"
+        f"Skipped: "
+        f"{skipped}"
     )
 
     logger.info(
-        f"Failed: {failed}"
+        f"Failed: "
+        f"{failed}"
     )
 
     logger.info(

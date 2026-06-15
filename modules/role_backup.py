@@ -50,7 +50,8 @@ class RoleBackupManager:
                 ),
                 "accounts": [],
                 "total_accounts": 0,
-                "total_roles": 0
+                "total_roles": 0,
+                "version": "2.0"
             },
             "accounts": {}
         }
@@ -241,7 +242,8 @@ class RoleBackupManager:
                 accounts[
                     account_id
                 ] = {
-                    "roles": {}
+                    "roles": {},
+                    "role_count": 0
                 }
 
             accounts[
@@ -252,16 +254,26 @@ class RoleBackupManager:
                 role_name
             ] = metadata
 
+            accounts[
+                account_id
+            ][
+                "role_count"
+            ] = len(
+                accounts[
+                    account_id
+                ][
+                    "roles"
+                ]
+            )
+
             account_list = sorted(
                 accounts.keys()
             )
 
             total_roles = sum(
-                len(
-                    account_data[
-                        "roles"
-                    ]
-                )
+                account_data[
+                    "role_count"
+                ]
                 for account_data
                 in accounts.values()
             )
