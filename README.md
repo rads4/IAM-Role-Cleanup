@@ -1,184 +1,257 @@
-# IAM Role Cleanup Utility - Single AWS Account
+# IAM Role Cleanup with Backup & Recovery
 
 ## Overview
 
-IAM Role Cleanup Utility is a Python-based automation tool designed to perform bulk IAM role cleanup within an AWS account.
+This implementation extends the IAM Role Cleanup framework by introducing backup and recovery capabilities before role deletion.
 
-The utility reads role information from a CSV file, validates the target account, removes role dependencies, and deletes IAM roles using configurable parallel execution. It also supports dry-run validation and detailed error reporting to ensure safe execution.
+Prior to removing any IAM role, the framework captures and stores all metadata required to recreate the role later. This ensures that deleted roles can be restored if required while maintaining the existing cleanup workflow.
 
-This implementation is intended for profile-based execution against a single AWS account.
+The current implementation is designed for single-account execution using AWS Profile based authentication and has been validated through end-to-end testing.
 
 ---
 
 ## Architecture
 
 <p align="center">
-  <img src="docs/architecture-single-account.png" alt="Single Account Architecture" width="1000"/>
+  <img src="docs/architecture-backup-and-restore.png" alt="Cleanup, Backup and Restoration Architecture" width="1000"/>
 </p>
 
 <p align="center">
-  Single-account IAM role cleanup workflow using AWS Login profile authentication.
+  IAM Role Backup, Cleanup & Restoration Flow
 </p>
 
 ---
 
-## Key Features
+## Features
 
-- CSV-driven role processing
-- Parallel role deletion using worker threads
-- Dry-run mode for validation before execution
-- Automatic cleanup of role dependencies
-- Retry handling for throttling scenarios
-- Error collection and CSV reporting
-- AWS account validation before execution
-- Modular and extensible code structure
+### Role Backup
 
----
+Before deletion, the framework captures:
 
-## Dependency Cleanup
-
-Before deleting a role, the utility automatically removes associated dependencies:
-
-- Attached managed policies
-- Inline policies
-- Instance profile associations
-
-This prevents common IAM deletion failures caused by existing role dependencies.
+- Trust Policy
+- Managed Policy Attachments
+- Inline Policies
+- Instance Profile Associations
+- Role Path
+- Role Description
+- Max Session Duration
 
 ---
 
-## Project Structure
+### Safe Deletion Workflow
 
-```text
-.
-├── cfn/
-│   └── iam-role-cleanup.yaml
-│
-├── config/
-│   └── settings.py
-│
-├── docs/
-│   └── architecture-single-account.png
-│
-├── modules/
-│   ├── auth.py
-│   ├── csv_reader.py
-│   ├── error_collector.py
-│   ├── executor.py
-│   ├── iam_cleaner.py
-│   └── logger.py
-│
-├── tests/
-│   ├── test_auth.py
-│   └── test_csv_reader.py
-│
-├── main.py
-├── requirements.txt
-└── README.md
-```
+A role is deleted only after:
+
+1. Metadata is captured successfully
+2. Backup validation passes
+3. Backup is written successfully
+
+If backup creation fails, deletion is skipped.
 
 ---
 
-## Input Format
+### Incremental Backup Persistence
 
-The utility expects a CSV file containing IAM role information.
+Backups are written incrementally during execution.
+
+Benefits:
+
+- Prevents loss of captured data if execution stops midway
+- Supports long-running cleanup operations
+- Allows recovery from partial execution failures
+
+---
+
+### Timestamp-Based Backups
+
+Backup files are generated automatically and stored separately.
 
 Example:
 
-```csv
-AccountId,Name
-123456789012,SampleRoleA
-123456789012,SampleRoleB
-123456789012,SampleRoleC
+```text
+backups/
+└── role_backup_2026-06-12_15-53-08_IST.json
 ```
 
-A sample file is provided under:
+This prevents previous backups from being overwritten and allows historical recovery.
+
+---
+
+### Parallel Role Processing
+
+The framework supports concurrent role cleanup using configurable worker pools.
+
+Configuration:
+
+```python
+ACCOUNT_WORKERS
+ROLE_WORKERS
+```
+
+Current implementation:
 
 ```text
-dummy-inputs/dummy_roles.csv
+Single Account
+Parallel Role Cleanup
 ```
 
 ---
 
-## Authentication
+### Dependency Cleanup
 
-Authentication is performed using an AWS profile configured through AWS Login.
+Before role deletion, the framework removes:
+
+#### Managed Policies
+
+```python
+detach_role_policy()
+```
+
+#### Inline Policies
+
+```python
+delete_role_policy()
+```
+
+#### Instance Profile Associations
+
+```python
+remove_role_from_instance_profile()
+```
+
+#### Role
+
+```python
+delete_role()
+```
+
+---
+
+### Retry Mechanism
+
+The cleanup process includes retry handling with exponential backoff for throttling and rate limit related failures.
+
+Configuration:
+
+```python
+MAX_RETRY_ATTEMPTS
+BASE_BACKOFF_SECONDS
+```
+
+---
+
+### Error Reporting
+
+Execution failures are captured with detailed context including:
+
+- Account ID
+- Role Name
+- Stage
+- Operation
+- Error Type
+- Error Message
+- Timestamp
+
+Output:
+
+```text
+output/role_deletion_errors.csv
+```
+
+---
+
+### Execution Summary
+
+At the end of execution, a summary is generated showing:
+
+```text
+BACKUP Success=x Failed=y
+DELETE Success=x Failed=y
+RESTORE Success=x Failed=y
+SKIPPED x
+```
+
+---
+
+## Backup File Structure
 
 Example:
+
+```json
+{
+  "RoleName": {
+    "path": "/",
+    "description": "Example role",
+    "max_session_duration": 3600,
+    "trust_policy": {},
+    "managed_policies": [],
+    "inline_policies": {},
+    "instance_profiles": []
+  }
+}
+```
+
+---
+
+## Role Restoration
+
+A separate utility is provided to recreate deleted roles from backup files.
+
+### Restore All Roles
 
 ```bash
-aws login --profile non-prod-admin
+python3 restore_roles.py backups/<backup-file>.json
 ```
 
-The profile name is configured in:
+### Restore Selected Roles
 
-```python
-config/settings.py
+```bash
+python3 restore_roles.py \
+backups/<backup-file>.json \
+--roles RoleA,RoleB
 ```
 
-Example:
+### Dry Run
 
-```python
-AWS_PROFILE = "non-prod-admin"
+```bash
+python3 restore_roles.py \
+backups/<backup-file>.json \
+--dry-run
+```
+
+### Restore Instance Profile Associations
+
+```bash
+python3 restore_roles.py \
+backups/<backup-file>.json \
+--restore-profiles
 ```
 
 ---
 
 ## Configuration
 
-Application behavior is controlled through:
+Configuration values are managed through:
 
-```python
+```text
 config/settings.py
 ```
 
-Important parameters:
+Key parameters:
 
 ```python
 ACCOUNT_WORKERS
 ROLE_WORKERS
 MAX_RETRY_ATTEMPTS
 BASE_BACKOFF_SECONDS
-DRY_RUN
-AWS_PROFILE
 INPUT_CSV
+AWS_PROFILE
+DRY_RUN
 ```
 
 ---
 
-## Execution Flow
-
-```text
-AWS Profile Authentication
-            ↓
-Account Validation
-            ↓
-CSV Parsing
-            ↓
-Parallel Role Processing
-            ↓
-Dependency Cleanup
-            ↓
-Role Deletion
-            ↓
-Error Reporting
-```
-
----
-
-## Running the Utility
-
-### Validate Access
-
-```bash
-python3 tests/test_auth.py
-```
-
-### Validate CSV Parsing
-
-```bash
-python3 -m tests.test_csv_reader
-```
+## Execution
 
 ### Dry Run
 
@@ -190,7 +263,11 @@ DRY_RUN = True
 python3 main.py
 ```
 
-### Actual Execution
+Captures and validates backups without deleting roles.
+
+---
+
+### Actual Cleanup
 
 ```python
 DRY_RUN = False
@@ -200,25 +277,7 @@ DRY_RUN = False
 python3 main.py
 ```
 
----
-
-## Error Reporting
-
-Failed operations are captured in:
-
-```text
-output/role_deletion_errors.csv
-```
-
-The report contains:
-
-- Timestamp
-- Account ID
-- Role Name
-- Error Type
-- Error Message
-
-This allows failed roles to be reviewed and retried separately if required.
+Performs backup, dependency cleanup, and role deletion.
 
 ---
 
@@ -226,34 +285,28 @@ This allows failed roles to be reviewed and retried separately if required.
 
 The implementation has been validated for:
 
-- CSV-driven role processing
-- Profile-based AWS authentication
-- IAM role dependency cleanup
-- Parallel role execution
-- Dry-run validation
-- Error reporting workflow
-- IAM role deletion within a target AWS account
-
----
-
-## CloudFormation Template
-
-A CloudFormation template is included under:
-
-```text
-cfn/iam-role-cleanup.yaml
-```
-
-The template provisions an IAM role with the permissions required to perform IAM role cleanup activities.
+- Metadata Backup
+- Backup Persistence
+- Parallel Execution
+- Dependency Cleanup
+- Role Deletion
+- Role Restoration
+- Managed Policy Recovery
+- Inline Policy Recovery
+- Instance Profile Recovery
+- Path Restoration
+- Description Restoration
+- Max Session Duration Restoration
 
 ---
 
 ## Current Scope
 
-This branch supports:
+Supported:
 
-- Single AWS account execution
-- AWS profile-based authentication
-- Bulk IAM role cleanup from CSV input
+- AWS Profile Based Authentication
+- Single Account Execution
+- Parallel Role Cleanup
+- Backup & Recovery
 
-Future enhancements such as cross-account execution and STS AssumeRole workflows are maintained separately from this implementation.
+---
