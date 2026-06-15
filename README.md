@@ -1,8 +1,8 @@
-# IAM Role Cleanup with Backup & Recovery
+# IAM Role Cleanup with Backup & Recovery - Single Account
 
 ## Overview
 
-This implementation extends the IAM Role Cleanup framework by introducing backup and recovery capabilities before role deletion.
+This implementation extends the IAM Role Cleanup framework by introducing backup and recovery capabilities before role deletion, suited for single aws account only.
 
 Prior to removing any IAM role, the framework captures and stores all metadata required to recreate the role later. This ensures that deleted roles can be restored if required while maintaining the existing cleanup workflow.
 
