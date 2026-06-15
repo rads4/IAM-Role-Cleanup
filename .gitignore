@@ -23,8 +23,7 @@ output/
 # OS
 .DS_Store
 
-inputs/*.csv
-!inputs/dummy_roles.csv
+inputs/roles.csv
 inputs/account_credentials.csv
 
 output/
@@ -33,3 +32,5 @@ output/
 
 /test_cfn_role.py
 /test_auth.py
+
+/backups
