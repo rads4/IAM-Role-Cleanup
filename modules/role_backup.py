@@ -5,6 +5,7 @@ import threading
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+
 class RoleBackupManager:
 
     REQUIRED_SCHEMA = {
@@ -20,8 +21,6 @@ class RoleBackupManager:
     def __init__(self, backup_dir):
 
         self.lock = threading.Lock()
-
-        self.backup_store = {}
 
         os.makedirs(
             backup_dir,
@@ -41,6 +40,20 @@ class RoleBackupManager:
             backup_dir,
             f"role_backup_{timestamp}.json"
         )
+
+        self.backup_store = {
+            "backup_metadata": {
+                "created_at": (
+                    datetime.now(
+                        ZoneInfo("Asia/Kolkata")
+                    ).isoformat()
+                ),
+                "accounts": [],
+                "total_accounts": 0,
+                "total_roles": 0
+            },
+            "accounts": {}
+        }
 
     def get_backup_file_path(self):
 
@@ -212,15 +225,66 @@ class RoleBackupManager:
 
     def persist_role_backup(
         self,
+        account_id,
         role_name,
         metadata
     ):
 
         with self.lock:
 
-            self.backup_store[
+            accounts = self.backup_store[
+                "accounts"
+            ]
+
+            if account_id not in accounts:
+
+                accounts[
+                    account_id
+                ] = {
+                    "roles": {}
+                }
+
+            accounts[
+                account_id
+            ][
+                "roles"
+            ][
                 role_name
             ] = metadata
+
+            account_list = sorted(
+                accounts.keys()
+            )
+
+            total_roles = sum(
+                len(
+                    account_data[
+                        "roles"
+                    ]
+                )
+                for account_data
+                in accounts.values()
+            )
+
+            self.backup_store[
+                "backup_metadata"
+            ][
+                "accounts"
+            ] = account_list
+
+            self.backup_store[
+                "backup_metadata"
+            ][
+                "total_accounts"
+            ] = len(
+                account_list
+            )
+
+            self.backup_store[
+                "backup_metadata"
+            ][
+                "total_roles"
+            ] = total_roles
 
             temp_file = (
                 f"{self.backup_file}.tmp"

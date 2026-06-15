@@ -1,56 +1,280 @@
+from pathlib import Path
+
 from modules.csv_reader import load_roles
+
 from modules.executor import execute
+
 from modules.logger import get_logger
-from modules.auth import get_account_session
-from modules.role_backup import RoleBackupManager
+
+from modules.auth import (
+    get_available_profiles,
+    build_local_auth_config,
+    build_assume_role_auth_config
+)
+
+from modules.role_backup import (
+    RoleBackupManager
+)
 
 from config.settings import (
-    INPUT_CSV,
     BACKUP_DIR
 )
+
+
+def select_csv():
+
+    csv_files = []
+
+    for directory in [
+        "inputs",
+        "dummy-inputs"
+    ]:
+
+        path = Path(directory)
+
+        if path.exists():
+
+            csv_files.extend(
+                sorted(
+                    path.glob(
+                        "*.csv"
+                    )
+                )
+            )
+
+    if not csv_files:
+
+        raise Exception(
+            "No CSV files found"
+        )
+
+    print(
+        "\nAvailable CSV Files:\n"
+    )
+
+    for index, file in enumerate(
+        csv_files,
+        start=1
+    ):
+
+        print(
+            f"{index}. {file}"
+        )
+
+    while True:
+
+        choice = input(
+            "\nSelect CSV: "
+        ).strip()
+
+        try:
+
+            return str(
+                csv_files[
+                    int(choice) - 1
+                ]
+            )
+
+        except (
+            ValueError,
+            IndexError
+        ):
+
+            print(
+                "Invalid selection"
+            )
+
+
+def select_execution_mode():
+
+    print(
+        "\nExecution Mode\n"
+    )
+
+    print(
+        "1. Local Profile"
+    )
+
+    print(
+        "2. Assume Role"
+    )
+
+    while True:
+
+        choice = input(
+            "\nSelect Mode: "
+        ).strip()
+
+        if choice == "1":
+
+            return "LOCAL"
+
+        if choice == "2":
+
+            return "ASSUME_ROLE"
+
+        print(
+            "Invalid selection"
+        )
+
+
+def select_profile():
+
+    profiles = (
+        get_available_profiles()
+    )
+
+    if not profiles:
+
+        raise Exception(
+            "No AWS profiles found"
+        )
+
+    print(
+        "\nAvailable AWS Profiles:\n"
+    )
+
+    for index, profile in enumerate(
+        profiles,
+        start=1
+    ):
+
+        print(
+            f"{index}. {profile}"
+        )
+
+    while True:
+
+        choice = input(
+            "\nSelect Profile: "
+        ).strip()
+
+        try:
+
+            return profiles[
+                int(choice) - 1
+            ]
+
+        except (
+            ValueError,
+            IndexError
+        ):
+
+            print(
+                "Invalid selection"
+            )
+
+
+def build_local_mapping(
+    accounts
+):
+
+    account_profiles = {}
+
+    for account_id in sorted(
+        accounts
+    ):
+
+        print(
+            f"\nAccount: "
+            f"{account_id}"
+        )
+
+        profile = (
+            select_profile()
+        )
+
+        account_profiles[
+            account_id
+        ] = profile
+
+    return (
+        build_local_auth_config(
+            account_profiles
+        )
+    )
+
+
+def build_assume_role_mapping(
+    accounts
+):
+
+    print(
+        "\nBase Profile "
+        "(Operator Account)"
+    )
+
+    base_profile = (
+        select_profile()
+    )
+
+    account_roles = {}
+
+    for account_id in sorted(
+        accounts
+    ):
+
+        role_arn = input(
+            f"\nRole ARN for "
+            f"{account_id}: "
+        ).strip()
+
+        account_roles[
+            account_id
+        ] = role_arn
+
+    return (
+        build_assume_role_auth_config(
+            account_roles,
+            base_profile
+        )
+    )
 
 
 def main():
 
     logger = get_logger()
 
+    selected_csv = (
+        select_csv()
+    )
+
     grouped_roles = load_roles(
-        INPUT_CSV
+        selected_csv
     )
 
-    session = get_account_session()
-
-    caller = session.client(
-        "sts"
-    ).get_caller_identity()
-
-    logger.info(
-        f"Executing as: "
-        f"{caller['Arn']}"
-    )
-
-    logger.info(
-        f"Account: "
-        f"{caller['Account']}"
-    )
-
-    csv_accounts = list(
+    accounts = list(
         grouped_roles.keys()
     )
 
     logger.info(
-        f"CSV Account(s): "
-        f"{csv_accounts}"
+        f"CSV Selected: "
+        f"{selected_csv}"
     )
 
-    if (
-        len(csv_accounts) != 1
-        or csv_accounts[0] != caller["Account"]
-    ):
+    logger.info(
+        f"Accounts Found: "
+        f"{accounts}"
+    )
 
-        raise Exception(
-            "CSV account does not match "
-            "logged-in account"
+    mode = (
+        select_execution_mode()
+    )
+
+    if mode == "LOCAL":
+
+        auth_config = (
+            build_local_mapping(
+                accounts
+            )
+        )
+
+    else:
+
+        auth_config = (
+            build_assume_role_mapping(
+                accounts
+            )
         )
 
     total_roles = sum(
@@ -61,30 +285,13 @@ def main():
 
     logger.info(
         f"Accounts found: "
-        f"{len(grouped_roles)}"
+        f"{len(accounts)}"
     )
 
     logger.info(
         f"Total roles: "
         f"{total_roles}"
     )
-
-    sample_roles = []
-
-    for roles in grouped_roles.values():
-
-        sample_roles.extend(
-            roles[:5]
-        )
-
-    logger.info(
-        f"Sample roles: "
-        f"{sample_roles}"
-    )
-
-    #
-    # Backup Manager
-    #
 
     backup_manager = (
         RoleBackupManager(
@@ -97,19 +304,12 @@ def main():
         f"{backup_manager.get_backup_file_path()}"
     )
 
-    #
-    # Execute Cleanup
-    #
-
     error_collector = execute(
-        grouped_roles,
-        logger,
-        backup_manager
+        grouped_roles=grouped_roles,
+        logger=logger,
+        backup_manager=backup_manager,
+        auth_config=auth_config
     )
-
-    #
-    # Error Report
-    #
 
     if error_collector.count():
 
@@ -117,33 +317,10 @@ def main():
             "output/role_deletion_errors.csv"
         )
 
-        logger.info(
-            f"Errors captured: "
-            f"{error_collector.count()}"
-        )
-
-    #
-    # Summary
-    #
-
     error_collector.print_summary(
         logger,
         backup_manager.get_backup_file_path()
     )
-
-    if error_collector.count():
-
-        logger.info(
-            "Execution completed "
-            "with errors"
-        )
-
-    else:
-
-        logger.info(
-            "Execution completed "
-            "successfully"
-        )
 
 
 if __name__ == "__main__":

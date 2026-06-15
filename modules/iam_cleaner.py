@@ -174,6 +174,7 @@ def delete_role_fully(
     try:
 
         backup_manager.persist_role_backup(
+            account_id,
             role_name,
             metadata
         )

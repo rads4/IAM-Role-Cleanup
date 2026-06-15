@@ -12,50 +12,64 @@ from config.settings import (
 )
 
 from modules.auth import (
-    get_account_session
-)
-
-from modules.iam_cleaner import (
-    delete_role_fully
+    get_session
 )
 
 from modules.error_collector import (
     ErrorCollector
 )
 
+from modules.iam_cleaner import (
+    delete_role_fully
+)
 
-progress_lock = Lock()
 
-completed_roles = 0
-
-
-def process_role(
-    iam_client,
-    account_id,
-    role_name,
+def execute(
+    grouped_roles,
     logger,
-    error_collector,
     backup_manager,
-    total_roles
+    auth_config
 ):
 
-    global completed_roles
+    error_collector = ErrorCollector()
 
-    try:
+    progress_lock = Lock()
+
+    total_roles = sum(
+        len(roles)
+        for roles
+        in grouped_roles.values()
+    )
+
+    completed_roles = 0
+
+    def process_role(
+        account_id,
+        role_name,
+        iam_client
+    ):
+
+        nonlocal completed_roles
 
         logger.info(
             f"Processing role: "
             f"{role_name}"
         )
 
-        result = delete_role_fully(
-            iam_client=iam_client,
-            account_id=account_id,
-            role_name=role_name,
-            backup_manager=backup_manager,
-            error_collector=error_collector,
-            dry_run=DRY_RUN
-        )
+        try:
+
+            result = delete_role_fully(
+                iam_client=iam_client,
+                account_id=account_id,
+                role_name=role_name,
+                backup_manager=backup_manager,
+                error_collector=error_collector,
+                dry_run=DRY_RUN
+            )
+
+        except Exception:
+
+            result = "failed"
 
         with progress_lock:
 
@@ -73,72 +87,48 @@ def process_role(
             f"({result})"
         )
 
-    except Exception as e:
+    def process_account(
+        account_id,
+        roles
+    ):
 
-        logger.error(
-            f"Failed role: "
-            f"{role_name} "
-            f"({str(e)})"
+        logger.info(
+            f"Creating session for "
+            f"account {account_id}"
         )
 
+        session = get_session(
+            auth_config,
+            account_id
+        )
 
-def process_account(
-    account_id,
-    roles,
-    logger,
-    error_collector,
-    backup_manager,
-    total_roles
-):
+        iam_client = session.client(
+            "iam"
+        )
 
-    session = get_account_session()
+        with ThreadPoolExecutor(
+            max_workers=ROLE_WORKERS
+        ) as executor:
 
-    iam_client = session.client(
-        "iam"
-    )
+            futures = [
 
-    with ThreadPoolExecutor(
-        max_workers=ROLE_WORKERS
-    ) as executor:
+                executor.submit(
+                    process_role,
+                    account_id,
+                    role_name,
+                    iam_client
+                )
 
-        futures = [
+                for role_name
+                in roles
 
-            executor.submit(
-                process_role,
-                iam_client,
-                account_id,
-                role,
-                logger,
-                error_collector,
-                backup_manager,
-                total_roles
-            )
+            ]
 
-            for role in roles
-        ]
+            for future in as_completed(
+                futures
+            ):
 
-        for future in as_completed(
-            futures
-        ):
-
-            future.result()
-
-
-def execute(
-    grouped_roles,
-    logger,
-    backup_manager
-):
-
-    error_collector = (
-        ErrorCollector()
-    )
-
-    total_roles = sum(
-        len(roles)
-        for roles
-        in grouped_roles.values()
-    )
+                future.result()
 
     with ThreadPoolExecutor(
         max_workers=ACCOUNT_WORKERS
@@ -149,30 +139,19 @@ def execute(
             executor.submit(
                 process_account,
                 account_id,
-                roles,
-                logger,
-                error_collector,
-                backup_manager,
-                total_roles
+                roles
             )
 
             for account_id,
             roles
             in grouped_roles.items()
+
         ]
 
         for future in as_completed(
             futures
         ):
 
-            try:
-
-                future.result()
-
-            except Exception as e:
-
-                logger.error(
-                    str(e)
-                )
+            future.result()
 
     return error_collector
