@@ -1,6 +1,8 @@
 import csv
 import threading
 
+from pathlib import Path
+
 from datetime import datetime
 
 
@@ -65,7 +67,7 @@ class ErrorCollector:
                 error_type,
 
                 "error_message":
-                message
+                str(message)
             })
 
     def increment(
@@ -130,7 +132,15 @@ class ErrorCollector:
     ):
 
         if not self.errors:
+
             return
+
+        Path(
+            file_name
+        ).parent.mkdir(
+            parents=True,
+            exist_ok=True
+        )
 
         with open(
             file_name,
@@ -139,8 +149,11 @@ class ErrorCollector:
         ) as file:
 
             writer = csv.DictWriter(
+
                 file,
+
                 fieldnames=[
+
                     "timestamp",
                     "account_id",
                     "role_name",
@@ -156,6 +169,62 @@ class ErrorCollector:
             writer.writerows(
                 self.errors
             )
+
+    def write_account_summary(
+        self,
+        file_name
+    ):
+
+        account_summary = {}
+
+        for error in self.errors:
+
+            account_id = error[
+                "account_id"
+            ]
+
+            account_summary.setdefault(
+                account_id,
+                0
+            )
+
+            account_summary[
+                account_id
+            ] += 1
+
+        Path(
+            file_name
+        ).parent.mkdir(
+            parents=True,
+            exist_ok=True
+        )
+
+        with open(
+            file_name,
+            "w",
+            newline=""
+        ) as file:
+
+            writer = csv.writer(
+                file
+            )
+
+            writer.writerow([
+                "account_id",
+                "error_count"
+            ])
+
+            for (
+                account_id,
+                count
+            ) in sorted(
+                account_summary.items()
+            ):
+
+                writer.writerow([
+                    account_id,
+                    count
+                ])
 
     def print_summary(
         self,
@@ -184,6 +253,7 @@ class ErrorCollector:
         ]:
 
             logger.info(
+
                 f"{stage:<12} "
                 f"Success="
                 f"{self.stats[stage]['success']} "

@@ -1,38 +1,46 @@
 import boto3
 
 
-def get_available_profiles():
+def get_operator_session():
 
-    session = boto3.Session()
-
-    return sorted(
-        session.available_profiles
-    )
+    return boto3.Session()
 
 
-def build_auth_config(
-    account_profiles
+def assume_role(
+    session,
+    role_arn,
+    session_name
 ):
 
-    return {
-        "account_profiles":
-        account_profiles
-    }
-
-
-def get_session(
-    auth_config,
-    account_id
-):
-
-    profile_name = (
-        auth_config[
-            "account_profiles"
-        ][account_id]
+    sts = session.client(
+        "sts"
     )
+
+    response = sts.assume_role(
+        RoleArn=role_arn,
+        RoleSessionName=session_name
+    )
+
+    credentials = response[
+        "Credentials"
+    ]
 
     return boto3.Session(
-        profile_name=profile_name
+
+        aws_access_key_id=
+        credentials[
+            "AccessKeyId"
+        ],
+
+        aws_secret_access_key=
+        credentials[
+            "SecretAccessKey"
+        ],
+
+        aws_session_token=
+        credentials[
+            "SessionToken"
+        ]
     )
 
 
@@ -47,3 +55,85 @@ def get_account_id(
     return sts.get_caller_identity()[
         "Account"
     ]
+
+
+def validate_session_account(
+    session,
+    expected_account_id
+):
+
+    actual_account_id = (
+        get_account_id(
+            session
+        )
+    )
+
+    if (
+        actual_account_id
+        != expected_account_id
+    ):
+
+        raise Exception(
+            f"Expected account "
+            f"{expected_account_id} "
+            f"but connected to "
+            f"{actual_account_id}"
+        )
+
+
+def get_cleaner_session(
+    operator_session,
+    account_id,
+    cross_account_role,
+    cleaner_role_arn
+):
+
+    bootstrap_role_arn = (
+
+        f"arn:aws:iam::"
+        f"{account_id}:role/"
+        f"{cross_account_role}"
+
+    )
+
+    bootstrap_session = (
+        assume_role(
+
+            session=
+            operator_session,
+
+            role_arn=
+            bootstrap_role_arn,
+
+            session_name=
+            f"restore-bootstrap-"
+            f"{account_id}"
+        )
+    )
+
+    validate_session_account(
+        bootstrap_session,
+        account_id
+    )
+
+    cleaner_session = (
+        assume_role(
+
+            session=
+            bootstrap_session,
+
+            role_arn=
+            cleaner_role_arn,
+
+            session_name=
+            f"restore-cleaner-"
+            f"{account_id}"
+        )
+    )
+
+    validate_session_account(
+        cleaner_session,
+        account_id
+    )
+
+    return cleaner_session

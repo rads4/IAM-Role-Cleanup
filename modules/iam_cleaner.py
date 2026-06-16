@@ -8,7 +8,22 @@ from config.settings import (
 )
 
 
-def _retryable_call(func, **kwargs):
+RETRYABLE_CODES = {
+
+    "Throttling",
+    "ThrottlingException",
+    "RequestLimitExceeded",
+    "TooManyRequestsException",
+    "DeleteConflict",
+    "ConcurrentModification",
+    "ServiceFailure"
+}
+
+
+def _retryable_call(
+    func,
+    **kwargs
+):
 
     for attempt in range(
         1,
@@ -17,29 +32,49 @@ def _retryable_call(func, **kwargs):
 
         try:
 
-            return func(**kwargs)
+            return func(
+                **kwargs
+            )
 
-        except ClientError as e:
+        except ClientError as error:
 
-            code = e.response[
-                "Error"
-            ]["Code"]
+            code = (
+                error.response[
+                    "Error"
+                ][
+                    "Code"
+                ]
+            )
 
             if (
-                "Throttl" not in code
-                and "Rate" not in code
+                code
+                not in
+                RETRYABLE_CODES
             ):
+
                 raise
 
-            if attempt == MAX_RETRY_ATTEMPTS:
+            if (
+                attempt
+                ==
+                MAX_RETRY_ATTEMPTS
+            ):
+
                 raise
 
             delay = (
                 BASE_BACKOFF_SECONDS *
-                (2 ** (attempt - 1))
+                (
+                    2 **
+                    (
+                        attempt - 1
+                    )
+                )
             )
 
-            time.sleep(delay)
+            time.sleep(
+                delay
+            )
 
 
 def _execute_deletion(
@@ -48,8 +83,10 @@ def _execute_deletion(
     dry_run=False
 ):
 
-    paginator = iam_client.get_paginator(
-        "list_attached_role_policies"
+    paginator = (
+        iam_client.get_paginator(
+            "list_attached_role_policies"
+        )
     )
 
     for page in paginator.paginate(
@@ -63,15 +100,22 @@ def _execute_deletion(
             if not dry_run:
 
                 _retryable_call(
+
                     iam_client.detach_role_policy,
-                    RoleName=role_name,
-                    PolicyArn=policy[
+
+                    RoleName=
+                    role_name,
+
+                    PolicyArn=
+                    policy[
                         "PolicyArn"
                     ]
                 )
 
-    paginator = iam_client.get_paginator(
-        "list_role_policies"
+    paginator = (
+        iam_client.get_paginator(
+            "list_role_policies"
+        )
     )
 
     for page in paginator.paginate(
@@ -85,13 +129,20 @@ def _execute_deletion(
             if not dry_run:
 
                 _retryable_call(
+
                     iam_client.delete_role_policy,
-                    RoleName=role_name,
-                    PolicyName=policy_name
+
+                    RoleName=
+                    role_name,
+
+                    PolicyName=
+                    policy_name
                 )
 
-    paginator = iam_client.get_paginator(
-        "list_instance_profiles_for_role"
+    paginator = (
+        iam_client.get_paginator(
+            "list_instance_profiles_for_role"
+        )
     )
 
     for page in paginator.paginate(
@@ -105,19 +156,26 @@ def _execute_deletion(
             if not dry_run:
 
                 _retryable_call(
+
                     iam_client.remove_role_from_instance_profile,
+
                     InstanceProfileName=
                     profile[
                         "InstanceProfileName"
                     ],
-                    RoleName=role_name
+
+                    RoleName=
+                    role_name
                 )
 
     if not dry_run:
 
         _retryable_call(
+
             iam_client.delete_role,
-            RoleName=role_name
+
+            RoleName=
+            role_name
         )
 
 
@@ -130,21 +188,19 @@ def delete_role_fully(
     dry_run=False
 ):
 
-    #
-    # BACKUP CAPTURE
-    #
-
     try:
 
         metadata = (
+
             backup_manager
             .capture_role_metadata(
+
                 iam_client,
                 role_name
             )
         )
 
-    except Exception as e:
+    except Exception as error:
 
         error_collector.increment(
             "BACKUP",
@@ -157,23 +213,21 @@ def delete_role_fully(
         )
 
         error_collector.add(
+
             account_id,
             role_name,
             "BACKUP",
             "CAPTURE_ROLE_METADATA",
-            type(e).__name__,
-            str(e)
+            type(error).__name__,
+            str(error)
         )
 
         return "backup_failed"
 
-    #
-    # BACKUP PERSIST
-    #
-
     try:
 
         backup_manager.persist_role_backup(
+
             account_id,
             role_name,
             metadata
@@ -184,7 +238,7 @@ def delete_role_fully(
             "success"
         )
 
-    except Exception as e:
+    except Exception as error:
 
         error_collector.increment(
             "BACKUP",
@@ -197,19 +251,16 @@ def delete_role_fully(
         )
 
         error_collector.add(
+
             account_id,
             role_name,
             "BACKUP",
             "PERSIST_ROLE_BACKUP",
-            type(e).__name__,
-            str(e)
+            type(error).__name__,
+            str(error)
         )
 
         return "backup_failed"
-
-    #
-    # DELETE
-    #
 
     for attempt in range(
         1,
@@ -219,8 +270,14 @@ def delete_role_fully(
         try:
 
             _execute_deletion(
+
+                iam_client=
                 iam_client,
+
+                role_name=
                 role_name,
+
+                dry_run=
                 dry_run
             )
 
@@ -231,33 +288,20 @@ def delete_role_fully(
 
             return "success"
 
-        except ClientError as e:
+        except ClientError as error:
 
-            code = e.response[
-                "Error"
-            ]["Code"]
-
-            if code == "NoSuchEntity":
-
-                error_collector.increment(
-                    "DELETE",
-                    "failed"
-                )
-
-                error_collector.add(
-                    account_id,
-                    role_name,
-                    "DELETE",
-                    "DELETE_ROLE",
-                    code,
-                    str(e)
-                )
-
-                raise
+            code = (
+                error.response[
+                    "Error"
+                ][
+                    "Code"
+                ]
+            )
 
             if (
-                "Throttl" not in code
-                and "Rate" not in code
+                code
+                ==
+                "NoSuchEntity"
             ):
 
                 error_collector.increment(
@@ -266,17 +310,22 @@ def delete_role_fully(
                 )
 
                 error_collector.add(
+
                     account_id,
                     role_name,
                     "DELETE",
                     "DELETE_ROLE",
                     code,
-                    str(e)
+                    str(error)
                 )
 
                 raise
 
-            if attempt == MAX_RETRY_ATTEMPTS:
+            if (
+                code
+                not in
+                RETRYABLE_CODES
+            ):
 
                 error_collector.increment(
                     "DELETE",
@@ -284,24 +333,55 @@ def delete_role_fully(
                 )
 
                 error_collector.add(
+
                     account_id,
                     role_name,
                     "DELETE",
                     "DELETE_ROLE",
                     code,
-                    str(e)
+                    str(error)
+                )
+
+                raise
+
+            if (
+                attempt
+                ==
+                MAX_RETRY_ATTEMPTS
+            ):
+
+                error_collector.increment(
+                    "DELETE",
+                    "failed"
+                )
+
+                error_collector.add(
+
+                    account_id,
+                    role_name,
+                    "DELETE",
+                    "DELETE_ROLE",
+                    code,
+                    str(error)
                 )
 
                 raise
 
             delay = (
                 BASE_BACKOFF_SECONDS *
-                (2 ** (attempt - 1))
+                (
+                    2 **
+                    (
+                        attempt - 1
+                    )
+                )
             )
 
-            time.sleep(delay)
+            time.sleep(
+                delay
+            )
 
-        except Exception as e:
+        except Exception as error:
 
             error_collector.increment(
                 "DELETE",
@@ -309,12 +389,13 @@ def delete_role_fully(
             )
 
             error_collector.add(
+
                 account_id,
                 role_name,
                 "DELETE",
                 "DELETE_ROLE",
-                type(e).__name__,
-                str(e)
+                type(error).__name__,
+                str(error)
             )
 
             raise

@@ -1,38 +1,8 @@
-# Python
 __pycache__/
 *.pyc
 
-# AWS
-.aws/
-credentials
-
-# Local env
-.env
-.venv/
-venv/
-
-# Output
-output/
-
-# Logs
-*.log
-
-# IDE
-.vscode/
-
-# OS
-.DS_Store
-
-inputs/roles.csv
 inputs/account_credentials.csv
+inputs/roles.csv
 
-output/
-
-/recreate_test_roles.py
-
-/test_cfn_role.py
-/test_auth.py
-
-/backups
-
-/cfn
+.vscode/
+.idea/

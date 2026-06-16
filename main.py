@@ -1,23 +1,23 @@
 from pathlib import Path
-import csv
 
-from modules.csv_reader import load_roles
+from modules.csv_reader import (
+    load_roles
+)
 
-from modules.executor import execute
+from modules.executor import (
+    execute
+)
 
-from modules.logger import get_logger
+from modules.logger import (
+    get_logger
+)
 
 from modules.auth import (
-    build_auth_config
+    get_operator_session
 )
 
 from modules.role_backup import (
     RoleBackupManager
-)
-
-from modules.profile_manager import (
-    create_profile,
-    profile_exists
 )
 
 from config.settings import (
@@ -88,132 +88,32 @@ def select_file(
             )
 
 
-def load_credentials(
-    credentials_file
-):
-
-    account_profiles = {}
-
-    with open(
-        credentials_file
-    ) as file:
-
-        reader = csv.DictReader(
-            file
-        )
-
-        for row in reader:
-
-            account_id = (
-                row[
-                    "AccountId"
-                ].strip()
-            )
-
-            permission = (
-                row[
-                    "Permission"
-                ].strip()
-            )
-
-            profile_name = (
-                f"{account_id}-"
-                f"{permission}"
-            )
-
-            if not profile_exists(
-                profile_name
-            ):
-
-                create_profile(
-                    profile_name=
-                    profile_name,
-
-                    access_key=
-                    row[
-                        "AccessKeyId"
-                    ].strip(),
-
-                    secret_key=
-                    row[
-                        "SecretAccessKey"
-                    ].strip(),
-
-                    region=
-                    row[
-                        "Region"
-                    ].strip()
-                )
-
-            account_profiles[
-                account_id
-            ] = profile_name
-
-    return account_profiles
-
-
-def validate_accounts(
-    grouped_roles,
-    account_profiles
-):
-
-    missing_accounts = []
-
-    for account_id in grouped_roles:
-
-        if (
-            account_id
-            not in account_profiles
-        ):
-
-            missing_accounts.append(
-                account_id
-            )
-
-    if missing_accounts:
-
-        raise Exception(
-            "Missing credentials for "
-            f"accounts: "
-            f"{missing_accounts}"
-        )
-
-
 def main():
 
     logger = get_logger()
 
     roles_csv = select_file(
-        "dummy-inputs",
-        "*roles*.csv",
+        "inputs",
+        "*.csv",
         "Role CSV Files"
     )
 
-    credentials_csv = select_file(
-        "inputs",
-        "account_credentials.csv",
-        "Credential Files"
-    )
+    cross_account_role = input(
+        "\nCross Account Role Name: "
+    ).strip()
+
+    if not cross_account_role:
+
+        raise Exception(
+            "Cross Account Role Name required"
+        )
 
     grouped_roles = load_roles(
         roles_csv
     )
 
-    account_profiles = (
-        load_credentials(
-            credentials_csv
-        )
-    )
-
-    validate_accounts(
-        grouped_roles,
-        account_profiles
-    )
-
-    auth_config = (
-        build_auth_config(
-            account_profiles
-        )
+    operator_session = (
+        get_operator_session()
     )
 
     total_roles = sum(
@@ -233,8 +133,8 @@ def main():
     )
 
     logger.info(
-        f"Profiles loaded: "
-        f"{len(account_profiles)}"
+        f"Cross Account Role: "
+        f"{cross_account_role}"
     )
 
     backup_manager = (
@@ -249,10 +149,21 @@ def main():
     )
 
     error_collector = execute(
-        grouped_roles=grouped_roles,
-        logger=logger,
-        backup_manager=backup_manager,
-        auth_config=auth_config
+
+        grouped_roles=
+        grouped_roles,
+
+        logger=
+        logger,
+
+        backup_manager=
+        backup_manager,
+
+        operator_session=
+        operator_session,
+
+        cross_account_role=
+        cross_account_role
     )
 
     if error_collector.count():

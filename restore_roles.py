@@ -1,18 +1,23 @@
 import json
 import sys
+
 from pathlib import Path
 
 from botocore.exceptions import (
     ClientError
 )
 
-from modules.auth import (
-    build_auth_config,
-    get_session
-)
-
 from modules.logger import (
     get_logger
+)
+
+from modules.auth import (
+    get_operator_session,
+    get_cleaner_session
+)
+
+from modules.iam_setup import (
+    get_cleaner_role_arn
 )
 
 
@@ -29,11 +34,16 @@ def role_exists(
 
         return True
 
-    except ClientError as e:
+    except ClientError as error:
 
         if (
-            e.response["Error"]["Code"]
-            == "NoSuchEntity"
+            error.response[
+                "Error"
+            ][
+                "Code"
+            ]
+            ==
+            "NoSuchEntity"
         ):
 
             return False
@@ -72,14 +82,23 @@ def restore_role(
         return "dry_run"
 
     iam_client.create_role(
-        RoleName=role_name,
-        Path=metadata["path"],
-        Description=metadata[
+
+        RoleName=
+        role_name,
+
+        Path=
+        metadata["path"],
+
+        Description=
+        metadata[
             "description"
         ],
-        MaxSessionDuration=metadata[
+
+        MaxSessionDuration=
+        metadata[
             "max_session_duration"
         ],
+
         AssumeRolePolicyDocument=
         json.dumps(
             metadata[
@@ -93,8 +112,12 @@ def restore_role(
     ]:
 
         iam_client.attach_role_policy(
-            RoleName=role_name,
-            PolicyArn=policy[
+
+            RoleName=
+            role_name,
+
+            PolicyArn=
+            policy[
                 "PolicyArn"
             ]
         )
@@ -107,9 +130,15 @@ def restore_role(
     ].items():
 
         iam_client.put_role_policy(
-            RoleName=role_name,
-            PolicyName=policy_name,
-            PolicyDocument=json.dumps(
+
+            RoleName=
+            role_name,
+
+            PolicyName=
+            policy_name,
+
+            PolicyDocument=
+            json.dumps(
                 policy_document
             )
         )
@@ -123,14 +152,18 @@ def restore_role(
             try:
 
                 iam_client.add_role_to_instance_profile(
+
                     InstanceProfileName=
                     profile[
                         "InstanceProfileName"
                     ],
-                    RoleName=role_name
+
+                    RoleName=
+                    role_name
                 )
 
             except Exception:
+
                 pass
 
     logger.info(
@@ -188,181 +221,11 @@ def select_backup_file():
                 ]
             )
 
-        except (
-            ValueError,
-            IndexError
-        ):
+        except Exception:
 
             print(
                 "Invalid selection"
             )
-
-
-def select_restore_mode():
-
-    print(
-        "\nRestore Mode\n"
-    )
-
-    print(
-        "1. All Accounts -> All Roles"
-    )
-
-    print(
-        "2. All Accounts -> Selected Roles"
-    )
-
-    print(
-        "3. Selected Account -> All Roles"
-    )
-
-    print(
-        "4. Selected Account -> Selected Roles"
-    )
-
-    while True:
-
-        choice = input(
-            "\nSelect: "
-        ).strip()
-
-        if choice in [
-            "1",
-            "2",
-            "3",
-            "4"
-        ]:
-
-            return choice
-
-        print(
-            "Invalid selection"
-        )
-
-
-def select_accounts(
-    backup_data,
-    mode
-):
-
-    accounts = sorted(
-        backup_data[
-            "accounts"
-        ].keys()
-    )
-
-    if mode in [
-        "1",
-        "2"
-    ]:
-
-        return accounts
-
-    print(
-        "\nAvailable Accounts:\n"
-    )
-
-    for index, account_id in enumerate(
-        accounts,
-        start=1
-    ):
-
-        print(
-            f"{index}. "
-            f"{account_id}"
-        )
-
-    while True:
-
-        choice = input(
-            "\nSelect Account: "
-        ).strip()
-
-        try:
-
-            return [
-                accounts[
-                    int(choice) - 1
-                ]
-            ]
-
-        except (
-            ValueError,
-            IndexError
-        ):
-
-            print(
-                "Invalid selection"
-            )
-
-
-def select_roles(
-    backup_data,
-    selected_accounts,
-    mode
-):
-
-    if mode in [
-        "1",
-        "3"
-    ]:
-
-        return None
-
-    all_roles = set()
-
-    for account_id in selected_accounts:
-
-        roles = (
-            backup_data[
-                "accounts"
-            ][
-                account_id
-            ][
-                "roles"
-            ]
-        )
-
-        all_roles.update(
-            roles.keys()
-        )
-
-    all_roles = sorted(
-        all_roles
-    )
-
-    print(
-        "\nAvailable Roles:\n"
-    )
-
-    for index, role in enumerate(
-        all_roles,
-        start=1
-    ):
-
-        print(
-            f"{index}. "
-            f"{role}"
-        )
-
-    choice = input(
-        "\nEnter role numbers "
-        "(comma separated): "
-    ).strip()
-
-    selected = set()
-
-    for item in choice.split(
-        ","
-    ):
-
-        selected.add(
-            all_roles[
-                int(item.strip()) - 1
-            ]
-        )
-
-    return selected
 
 
 def ask_yes_no(
@@ -407,24 +270,9 @@ def main():
             file
         )
 
-    mode = (
-        select_restore_mode()
-    )
-
-    selected_accounts = (
-        select_accounts(
-            backup_data,
-            mode
-        )
-    )
-
-    selected_roles = (
-        select_roles(
-            backup_data,
-            selected_accounts,
-            mode
-        )
-    )
+    cross_account_role = input(
+        "\nCross Account Role Name: "
+    ).strip()
 
     restore_profiles = (
         ask_yes_no(
@@ -438,43 +286,62 @@ def main():
         )
     )
 
-    account_profiles = {}
-
-    for account_id in selected_accounts:
-
-        account_profiles[
-            account_id
-        ] = (
-            f"{account_id}-admin"
-        )
-
-    auth_config = (
-        build_auth_config(
-            account_profiles
-        )
+    operator_session = (
+        get_operator_session()
     )
 
     restored = 0
     skipped = 0
     failed = 0
 
-    for account_id in selected_accounts:
+    for (
+        account_id,
+        account_data
+    ) in backup_data[
+        "accounts"
+    ].items():
 
-        session = get_session(
-            auth_config,
-            account_id
-        )
+        try:
 
-        iam_client = session.client(
-            "iam"
-        )
+            cleaner_session = (
+                get_cleaner_session(
+
+                    operator_session=
+                    operator_session,
+
+                    account_id=
+                    account_id,
+
+                    cross_account_role=
+                    cross_account_role,
+
+                    cleaner_role_arn=
+                    get_cleaner_role_arn(
+                        account_id
+                    )
+                )
+            )
+
+            iam_client = (
+                cleaner_session.client(
+                    "iam"
+                )
+            )
+
+        except Exception as error:
+
+            logger.error(
+                f"{account_id} | "
+                f"SESSION | "
+                f"{str(error)}"
+            )
+
+            failed += 1
+
+            continue
 
         roles = (
-            backup_data[
-                "accounts"
-            ][
-                account_id
-            ][
+            account_data[
                 "roles"
             ]
         )
@@ -484,17 +351,10 @@ def main():
             metadata
         ) in roles.items():
 
-            if (
-                selected_roles
-                and role_name
-                not in selected_roles
-            ):
-
-                continue
-
             try:
 
                 result = restore_role(
+
                     iam_client=
                     iam_client,
 
@@ -522,14 +382,14 @@ def main():
 
                     skipped += 1
 
-            except Exception as e:
+            except Exception as error:
 
                 failed += 1
 
                 logger.error(
                     f"{account_id} | "
                     f"{role_name} | "
-                    f"{str(e)}"
+                    f"{str(error)}"
                 )
 
     logger.info(
@@ -561,4 +421,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()
