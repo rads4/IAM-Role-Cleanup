@@ -25,11 +25,9 @@ Although the intended execution environment is Jenkins, the complete workflow ha
 
 ## Architecture
 
-> Architecture diagram placeholder
+![Architecture](docs/jenkins-assume-role-arch.png)
 
-```text
-docs/jenkins-assume-role-arch.png
-```
+---
 
 ### Execution Flow
 
