@@ -1,186 +1,323 @@
-# Multi Account IAM Role Cleanup - Backup & Restore
+# Jenkins Assume-Role Approach
 
-## Overview
-
-This branch extends the IAM Role Cleanup utility with backup and restoration capabilities while introducing support for multi-account execution.
-
-Before any IAM role is deleted, the script captures the complete role configuration and stores it in a backup file. The backup can later be used to recreate deleted roles, restoring trust policies, managed policies, inline policies, and optional instance profile associations.
-
-The current implementation is designed for local execution using AWS profiles. Jenkins orchestration and cross-account AssumeRole execution are intentionally excluded from this branch and will be implemented separately.
+Multi-account IAM Role Backup, Deletion, and Restore Utility using AWS STS AssumeRole.
 
 ---
 
-## Features
+## Overview
 
-| Capability                     | Supported |
-| ------------------------------ | --------- |
-| Single Account Execution       | ✅         |
-| Multi-Account Execution        | ✅         |
-| Automatic Backup Before Delete | ✅         |
-| Role Restoration               | ✅         |
-| Parallel Account Processing    | ✅         |
-| Parallel Role Processing       | ✅         |
-| Profile-Based Authentication   | ✅         |
-| Automatic Profile Creation     | ✅         |
-| Interactive Execution          | ✅         |
-| Interactive Restore Workflow   | ✅         |
-| Dry Run Support                | ✅         |
+This branch implements and validates a **Jenkins AssumeRole-based IAM cleanup workflow**.
+
+The solution is designed for environments where a Jenkins job (or an operator running locally with equivalent permissions) must perform IAM role cleanup across multiple AWS accounts in a controlled and auditable manner.
+
+The workflow follows a two-step role assumption model:
+
+1. Assume an existing cross-account role in the target account.
+2. Create or validate a dedicated cleanup role (`iam-role-cleaner`).
+3. Assume the cleanup role.
+4. Backup role configuration.
+5. Delete the target role.
+6. Restore roles later from backup if required.
+
+Although the intended execution environment is Jenkins, the complete workflow has been developed and tested locally to validate functionality before Jenkins integration.
 
 ---
 
 ## Architecture
 
-![Architecture](docs/architecture-multi-account-backup-and-restore.png)
-
----
-
-## Execution Flow
-
-### Cleanup Flow (Backup + Delete)
+> Architecture diagram placeholder
 
 ```text
-Role CSV
-    │
-    ▼
-Load Account Mapping
-    │
-    ▼
-Create / Resolve AWS Profiles
-    │
-    ▼
-Process Accounts In Parallel
-    │
-    ▼
-Process Roles In Parallel
-    │
-    ▼
-Capture Role Metadata
-    │
-    ▼
-Persist Backup
-    │
-    ▼
-Detach Policies
-    │
-    ▼
-Remove Instance Profile Associations
-    │
-    ▼
+docs/jenkins-assume-role-arch.png
+```
+
+### Execution Flow
+
+```text
+Local Execution / Jenkins Job
+                │
+                ▼
+Existing Cross-Account Role
+(user supplied)
+                │
+                ▼
+iam-role-cleaner
+(create / validate)
+                │
+                ▼
+Assume iam-role-cleaner
+                │
+                ▼
+Backup Role Metadata
+                │
+                ▼
 Delete IAM Role
 ```
 
-### Restore Flow
+### Intended Jenkins Flow
 
 ```text
-Select Backup File
-    │
-    ▼
-Select Restore Mode
-    │
-    ▼
-Select Account(s)
-    │
-    ▼
-Select Role(s)
-    │
-    ▼
-Recreate IAM Role
-    │
-    ▼
-Attach Managed Policies
-    │
-    ▼
-Restore Inline Policies
-    │
-    ▼
-(Optional) Restore Instance Profiles
+Jenkins Job
+      │
+      ▼
+Assume Existing Cross-Account Role
+      │
+      ▼
+Validate/Create iam-role-cleaner
+      │
+      ▼
+Assume iam-role-cleaner
+      │
+      ▼
+Backup + Delete + Restore Operations
 ```
 
 ---
 
-## Input Files
+## Features
 
-### Role Input File
+### Multi-Account Processing
 
-Used to identify roles that should be processed.
+Processes IAM roles across multiple AWS accounts concurrently.
+
+### Jenkins-Oriented AssumeRole Workflow
+
+Designed around a Jenkins execution model where access to target accounts is obtained through an existing cross-account role.
+
+The role name is supplied at runtime and used to establish initial access into each target account.
+
+Examples:
 
 ```text
-dummy-inputs/
-└── poc_roles.csv
-
-inputs/
-└── roles.csv
+terraform-assume-role
+platform-assume-role
+non-prod-assume-role
 ```
 
-Example:
+### Safe Backup
+
+Captures and stores:
+
+- Trust Policy
+- Managed Policies
+- Inline Policies
+- Instance Profiles
+- Description
+- Path
+- Max Session Duration
+
+before deletion.
+
+### Restore Capability
+
+Deleted roles can be restored from generated backup files.
+
+### Concurrency
+
+Supports:
+
+- Account-level parallelism
+- Role-level parallelism
+
+for faster execution.
+
+### Automatic Cleaner Role Validation
+
+The utility validates:
+
+- Cleaner role existence
+- Trust policy configuration
+- Permission policy configuration
+
+before role deletion begins.
+
+### Retry Logic
+
+Automatic retry handling for:
+
+- Throttling
+- Request limits
+- Delete conflicts
+- Concurrent modifications
+
+using exponential backoff.
+
+### Detailed Error Reporting
+
+Generates structured error reports containing:
+
+- Account ID
+- Role Name
+- Failure Stage
+- Error Type
+- Error Message
+
+---
+
+## Project Structure
+
+```text
+.
+├── config/
+├── modules/
+├── tests/
+├── docs/
+├── inputs/
+├── backups/
+├── output/
+│
+├── main.py
+├── restore_roles.py
+│
+├── create_poc_roles.py
+├── create_jenkins_poc_roles.py
+│
+├── cleaner-policy.json
+├── cleaner-trust.json
+├── trust-policy.json
+│
+├── requirements.txt
+└── README.md
+```
+
+---
+
+## Input Format
+
+### Role Cleanup CSV
 
 ```csv
-AccountId,AccountCategory,Type,Name
-123456789012,POC,Role,ExampleRole
+AccountId,Arn,Name
+123456789012,arn:aws:iam::123456789012:role/ExampleRole,ExampleRole
+```
+
+Required fields:
+
+| Column    | Description    |
+| --------- | -------------- |
+| AccountId | AWS Account ID |
+| Arn       | IAM Role ARN   |
+| Name      | IAM Role Name  |
+
+---
+
+## Cleanup Workflow
+
+### Step 1
+
+Launch the utility.
+
+```bash
+python3 main.py
+```
+
+### Step 2
+
+Select the role input CSV.
+
+Example:
+
+```text
+Available Role CSV Files:
+
+1. jenkins_poc_roles.csv
+2. roles.csv
+```
+
+### Step 3
+
+Provide the existing cross-account role name.
+
+Example:
+
+```text
+terraform-assume-role
+```
+
+This role acts as the bootstrap role used to gain access to each target account.
+
+### Step 4
+
+The utility performs the following sequence:
+
+```text
+Assume Cross-Account Role
+          ↓
+Validate/Create iam-role-cleaner
+          ↓
+Assume iam-role-cleaner
+          ↓
+Backup Roles
+          ↓
+Delete Roles
 ```
 
 ---
 
-### Account Credential File
+## Runtime Parameters
 
-Used to create local AWS profiles automatically.
+The utility currently requires the following runtime inputs:
 
-```text
-inputs/
-├── account_credentials.csv
-└── account_credentials.csv.example
-```
-
-Example:
-
-```csv
-AccountId,AccessKeyId,SecretAccessKey,Region,Permission
-123456789012,XXXXXXXX,XXXXXXXX,ap-south-1,admin
-```
-
-Generated profile format:
-
-```text
-<AccountId>-<Permission>
-```
+| Parameter               | Description                                          |
+| ----------------------- | ---------------------------------------------------- |
+| Role Cleanup CSV        | CSV containing target accounts and IAM roles         |
+| Cross-Account Role Name | Existing role used to gain access to target accounts |
 
 Example:
 
 ```text
-123456789012-admin
+Cross Account Role:
+terraform-assume-role
+```
+
+The supplied role name is used to dynamically construct the target role ARN:
+
+```text
+arn:aws:iam::<ACCOUNT_ID>:role/<CROSS_ACCOUNT_ROLE_NAME>
 ```
 
 ---
 
-## Backup Structure
+## Restore Workflow
 
-A single backup file is generated per execution.
+Restore previously deleted roles from backup.
 
-The backup contains:
+```bash
+python3 restore_roles.py
+```
 
-* Backup metadata
-* Account information
-* Role definitions
-* Trust policies
-* Managed policy attachments
-* Inline policies
-* Instance profile associations
+Supported restore modes:
 
-Example structure:
+```text
+1. All Accounts → All Roles
+2. All Accounts → Selected Roles
+3. Selected Account → All Roles
+4. Selected Account → Selected Roles
+```
+
+---
+
+## Backup Format
+
+Backups are stored as JSON.
+
+Location:
+
+```text
+backups/
+```
+
+Example:
 
 ```json
 {
-  "backup_metadata": {
-    "created_at": "...",
-    "total_accounts": 2,
-    "total_roles": 25
-  },
   "accounts": {
     "123456789012": {
-      "roles": {}
-    },
-    "987654321098": {
-      "roles": {}
+      "roles": {
+        "ExampleRole": {
+          ...
+        }
+      }
     }
   }
 }
@@ -188,148 +325,155 @@ Example structure:
 
 ---
 
-## Parallel Processing Model
+## Error Reports
 
-### Account-Level Parallelism
-
-Multiple AWS accounts can be processed simultaneously.
+Location:
 
 ```text
-Account A
-Account B
-Account C
+output/role_deletion_errors.csv
 ```
 
-run in parallel.
+Example:
 
-### Role-Level Parallelism
-
-Within each account, IAM roles are processed concurrently.
-
-```text
-Role 1
-Role 2
-Role 3
-Role 4
+```csv
+timestamp,account_id,role_name,stage,error_type,error_message
 ```
-
-run in parallel.
-
-This significantly reduces execution time for large cleanup operations.
 
 ---
 
-## Running Cleanup
+## Cleaner Role
+
+The utility manages a dedicated cleanup role:
+
+```text
+iam-role-cleaner
+```
+
+Responsibilities:
+
+- Backup IAM Roles
+- Detach Managed Policies
+- Delete Inline Policies
+- Remove Instance Profiles
+- Delete IAM Roles
+- Restore Deleted Roles
+
+The role is automatically created or validated before cleanup operations begin.
+
+---
+
+## Configuration
+
+Located in:
+
+```text
+config/settings.py
+```
+
+Key parameters:
+
+```python
+ACCOUNT_WORKERS = 3
+
+ROLE_WORKERS = 10
+
+MAX_RETRY_ATTEMPTS = 5
+
+BASE_BACKOFF_SECONDS = 1
+
+DRY_RUN = False
+```
+
+---
+
+## Testing Utilities
+
+### Generate POC Roles
 
 ```bash
-python3 main.py
+python3 create_poc_roles.py
 ```
 
-The utility provides an interactive workflow for:
+Creates sample IAM roles for testing.
 
-* Selecting role input file
-* Selecting credential file
-* Creating required profiles
-* Executing backup and deletion
-
-No command-line arguments are required.
-
----
-
-## Running Restore
+### Generate Jenkins Cleanup Dataset
 
 ```bash
-python3 restore_roles.py
+python3 create_jenkins_poc_roles.py
 ```
 
-The utility provides an interactive workflow for:
+Creates:
 
-* Selecting backup file
-* Selecting restore mode
-* Selecting accounts
-* Selecting roles
-* Choosing instance profile restoration
-* Running in dry-run mode if required
+- Test IAM Roles
+- Cleanup CSV
 
-No command-line arguments are required.
+for end-to-end validation.
 
 ---
 
-## Dry Run
+## Validation Performed
 
-Dry run mode allows validation without making changes.
-
-Supported for:
-
-* Cleanup execution
-* Restore execution
-
-This is recommended before performing operations in production environments.
-
----
-
-## Output Artifacts
-
-### Backup Files
+Before deletion:
 
 ```text
-backups/
+✓ Cross-account role assumption
+✓ Account validation
+✓ Cleaner role existence
+✓ Cleaner trust policy validation
+✓ Cleaner permission validation
+✓ Backup creation
 ```
 
-Generated before any deletion activity.
+---
 
-### Error Reports
+## Testing Status
+
+This implementation has been validated through local execution using AWS AssumeRole workflows.
+
+The following capabilities have been tested:
 
 ```text
-output/
+✓ Multi-account processing
+✓ Cross-account role assumption
+✓ Cleaner role creation
+✓ Cleaner role validation
+✓ IAM role backup
+✓ IAM role deletion
+✓ IAM role restoration
+✓ Error reporting
+✓ Concurrent execution
 ```
 
-Generated when failures occur during backup, deletion, or restoration.
+The same workflow is intended to be executed from Jenkins once the dedicated Jenkins infrastructure and execution environment are provisioned.
 
 ---
 
-## Local Testing
+## Branch Scope
 
-POC testing can be performed using:
+This branch represents the **Jenkins AssumeRole approach** currently under development and validation.
+
+Architecture implemented in this branch:
 
 ```text
-dummy-inputs/poc_roles.csv
+Jenkins Job / Local Execution
+                │
+                ▼
+Existing Cross-Account Role
+(user supplied)
+                │
+                ▼
+iam-role-cleaner
+                │
+                ▼
+Backup + Delete + Restore
 ```
 
-along with a corresponding credentials file.
+Key characteristics:
 
-This allows validation of:
+- Uses an existing cross-account role supplied at runtime.
+- Creates or validates `iam-role-cleaner` in target accounts.
+- Performs cleanup operations through the dedicated cleaner role.
+- Fully tested through local execution.
+- Intended to be migrated to Jenkins execution without changing the core workflow.
 
-* Backup generation
-* Role deletion
-* Role restoration
-* Multi-account processing logic
-* Profile creation workflow
-
-without requiring Jenkins integration.
-
----
-
-## Out of Scope
-
-The following capabilities are intentionally excluded from this branch:
-
-* Jenkins integration
-* Operator account orchestration
-* Cross-account AssumeRole execution
-* Automatic cleanup role provisioning
-* CloudFormation-based deployment workflows
-
-These features will be implemented in a dedicated Jenkins / AssumeRole branch.
-
----
-
-## Safety Controls
-
-* Backup captured before deletion
-* Dry-run support
-* Retry handling for throttling
-* Error reporting with CSV output
-* Role existence validation during restore
-* Thread-safe backup persistence
-* Account-level isolation during execution
+Future iterations may replace the bootstrap role dependency with a dedicated Jenkins execution role and CloudFormation-managed deployment of `iam-role-cleaner` across target accounts.
