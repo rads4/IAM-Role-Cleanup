@@ -10,14 +10,14 @@ ERROR_REPORT_PREFIX = (
     "role_deletion_errors"
 )
 
-DRY_RUN = False
+DRY_RUN = True
 
 BACKUP_DIR = "backups"
 
 OUTPUT_DIR = "output"
 
 CLEANER_ROLE_NAME = (
-    "iam-role-cleaner"
+    "ck-iam-role-cleaner"
 )
 
 CLEANER_POLICY_NAME = (

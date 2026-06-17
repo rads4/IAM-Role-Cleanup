@@ -51,14 +51,72 @@ def role_exists(
         raise
 
 
+def validate_role_identity(
+    account_id,
+    role_name,
+    role_arn
+):
+
+    expected_prefix = (
+        f"arn:aws:iam::{account_id}:role/"
+    )
+
+    if not role_arn.startswith(
+        expected_prefix
+    ):
+
+        raise ValueError(
+
+            f"RoleArn does not belong "
+            f"to account {account_id}: "
+            f"{role_arn}"
+        )
+
+    arn_role_name = (
+        role_arn.split("/")[-1]
+    )
+
+    if arn_role_name != role_name:
+
+        raise ValueError(
+
+            f"RoleName mismatch. "
+            f"Backup Name={role_name}, "
+            f"ARN Name={arn_role_name}"
+        )
+
+
 def restore_role(
     iam_client,
-    role_name,
     metadata,
     restore_profiles,
     dry_run,
     logger
 ):
+
+    account_id = metadata[
+        "account_id"
+    ]
+
+    role_name = metadata[
+        "role_name"
+    ]
+
+    role_arn = metadata[
+        "role_arn"
+    ]
+
+    validate_role_identity(
+
+        account_id=
+        account_id,
+
+        role_name=
+        role_name,
+
+        role_arn=
+        role_arn
+    )
 
     if role_exists(
         iam_client,
@@ -270,10 +328,6 @@ def main():
             file
         )
 
-    cross_account_role = input(
-        "\nCross Account Role Name: "
-    ).strip()
-
     restore_profiles = (
         ask_yes_no(
             "Restore Instance Profiles?"
@@ -309,16 +363,13 @@ def main():
                     operator_session=
                     operator_session,
 
-                    account_id=
-                    account_id,
-
-                    cross_account_role=
-                    cross_account_role,
-
                     cleaner_role_arn=
                     get_cleaner_role_arn(
                         account_id
-                    )
+                    ),
+
+                    account_id=
+                    account_id
                 )
             )
 
@@ -346,10 +397,7 @@ def main():
             ]
         )
 
-        for (
-            role_name,
-            metadata
-        ) in roles.items():
+        for metadata in roles.values():
 
             try:
 
@@ -357,9 +405,6 @@ def main():
 
                     iam_client=
                     iam_client,
-
-                    role_name=
-                    role_name,
 
                     metadata=
                     metadata,
@@ -388,7 +433,7 @@ def main():
 
                 logger.error(
                     f"{account_id} | "
-                    f"{role_name} | "
+                    f"{metadata.get('role_name')} | "
                     f"{str(error)}"
                 )
 
@@ -421,5 +466,4 @@ def main():
 
 
 if __name__ == "__main__":
-
     main()

@@ -17,8 +17,12 @@ def assume_role(
     )
 
     response = sts.assume_role(
-        RoleArn=role_arn,
-        RoleSessionName=session_name
+
+        RoleArn=
+        role_arn,
+
+        RoleSessionName=
+        session_name
     )
 
     credentials = response[
@@ -74,6 +78,7 @@ def validate_session_account(
     ):
 
         raise Exception(
+
             f"Expected account "
             f"{expected_account_id} "
             f"but connected to "
@@ -83,55 +88,27 @@ def validate_session_account(
 
 def get_cleaner_session(
     operator_session,
-    account_id,
-    cross_account_role,
-    cleaner_role_arn
+    cleaner_role_arn,
+    account_id
 ):
 
-    bootstrap_role_arn = (
-
-        f"arn:aws:iam::"
-        f"{account_id}:role/"
-        f"{cross_account_role}"
-
-    )
-
-    bootstrap_session = (
+    cleaner_session = (
         assume_role(
 
             session=
             operator_session,
 
             role_arn=
-            bootstrap_role_arn,
-
-            session_name=
-            f"restore-bootstrap-"
-            f"{account_id}"
-        )
-    )
-
-    validate_session_account(
-        bootstrap_session,
-        account_id
-    )
-
-    cleaner_session = (
-        assume_role(
-
-            session=
-            bootstrap_session,
-
-            role_arn=
             cleaner_role_arn,
 
             session_name=
-            f"restore-cleaner-"
+            f"cleanup-"
             f"{account_id}"
         )
     )
 
     validate_session_account(
+
         cleaner_session,
         account_id
     )

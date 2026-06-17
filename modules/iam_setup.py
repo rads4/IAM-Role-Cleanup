@@ -20,12 +20,7 @@ REQUIRED_ACTIONS = sorted([
     "iam:DeleteRolePolicy",
     "iam:DeleteRole",
     "iam:ListInstanceProfilesForRole",
-    "iam:RemoveRoleFromInstanceProfile",
-    "iam:CreateRole",
-    "iam:AttachRolePolicy",
-    "iam:PutRolePolicy",
-    "iam:AddRoleToInstanceProfile"
-
+    "iam:RemoveRoleFromInstanceProfile"
 ])
 
 
@@ -34,70 +29,9 @@ def get_cleaner_role_arn(
 ):
 
     return (
-        f"arn:aws:iam::"
-        f"{account_id}:role/"
+        f"arn:aws:iam::{account_id}:role/"
         f"{CLEANER_ROLE_NAME}"
     )
-
-
-def build_trust_policy(
-    trusted_role_arn
-):
-
-    return {
-
-        "Version":
-        "2012-10-17",
-
-        "Statement": [
-
-            {
-
-                "Effect":
-                "Allow",
-
-                "Principal": {
-
-                    "AWS":
-                    trusted_role_arn
-
-                },
-
-                "Action":
-                "sts:AssumeRole"
-
-            }
-
-        ]
-
-    }
-
-
-def build_permissions_policy():
-
-    return {
-
-        "Version":
-        "2012-10-17",
-
-        "Statement": [
-
-            {
-
-                "Effect":
-                "Allow",
-
-                "Action":
-                REQUIRED_ACTIONS,
-
-                "Resource":
-                "*"
-
-            }
-
-        ]
-
-    }
 
 
 def cleaner_role_exists(
@@ -130,73 +64,13 @@ def cleaner_role_exists(
         raise
 
 
-def validate_trust_policy(
-    iam_client,
-    trusted_role_arn,
-    logger
-):
-
-    role = iam_client.get_role(
-        RoleName=
-        CLEANER_ROLE_NAME
-    )
-
-    current_policy = (
-        role[
-            "Role"
-        ][
-            "AssumeRolePolicyDocument"
-        ]
-    )
-
-    expected_policy = (
-        build_trust_policy(
-            trusted_role_arn
-        )
-    )
-
-    if current_policy == expected_policy:
-
-        logger.info(
-            "Cleaner trust policy validated"
-        )
-
-        return False
-
-    logger.warning(
-        "Cleaner trust policy drift detected. Repairing..."
-    )
-
-    iam_client.update_assume_role_policy(
-
-        RoleName=
-        CLEANER_ROLE_NAME,
-
-        PolicyDocument=
-        json.dumps(
-            expected_policy
-        )
-    )
-
-    logger.info(
-        "Cleaner trust policy updated"
-    )
-
-    return True
-
-
 def validate_permissions_policy(
-    iam_client,
-    logger
+    iam_client
 ):
-
-    expected_policy = (
-        build_permissions_policy()
-    )
 
     try:
 
-        current_policy = (
+        policy = (
             iam_client.get_role_policy(
 
                 RoleName=
@@ -204,109 +78,86 @@ def validate_permissions_policy(
 
                 PolicyName=
                 CLEANER_POLICY_NAME
-            )[
-                "PolicyDocument"
-            ]
+            )
         )
 
         current_actions = sorted(
 
-            current_policy[
+            policy[
+                "PolicyDocument"
+            ][
                 "Statement"
             ][0][
                 "Action"
             ]
         )
 
-        if current_actions == REQUIRED_ACTIONS:
+        return (
+            current_actions
+            ==
+            REQUIRED_ACTIONS
+        )
 
-            logger.info(
-                "Cleaner permissions validated"
+    except ClientError:
+
+        return False
+
+
+def validate_trust_policy(
+    iam_client,
+    logger
+):
+
+    try:
+
+        role = iam_client.get_role(
+
+            RoleName=
+            CLEANER_ROLE_NAME
+        )
+
+        trust_policy = (
+
+            role[
+                "Role"
+            ][
+                "AssumeRolePolicyDocument"
+            ]
+        )
+
+        statements = (
+            trust_policy.get(
+                "Statement",
+                []
+            )
+        )
+
+        if not statements:
+
+            logger.warning(
+                "Cleaner role trust policy empty"
             )
 
             return False
 
-    except ClientError:
-
-        pass
-
-    logger.warning(
-        "Cleaner permissions drift detected. Repairing..."
-    )
-
-    iam_client.put_role_policy(
-
-        RoleName=
-        CLEANER_ROLE_NAME,
-
-        PolicyName=
-        CLEANER_POLICY_NAME,
-
-        PolicyDocument=
-        json.dumps(
-            expected_policy
+        logger.info(
+            "Cleaner trust policy validated"
         )
-    )
 
-    logger.info(
-        "Cleaner permissions updated"
-    )
+        return True
 
-    return True
+    except Exception as error:
+
+        logger.warning(
+            f"Trust policy validation failed: "
+            f"{str(error)}"
+        )
+
+        return False
 
 
-def create_cleaner_role(
+def validate_cleaner_role(
     iam_client,
-    trusted_role_arn,
-    logger
-):
-
-    trust_policy = (
-        build_trust_policy(
-            trusted_role_arn
-        )
-    )
-
-    permissions_policy = (
-        build_permissions_policy()
-    )
-
-    iam_client.create_role(
-
-        RoleName=
-        CLEANER_ROLE_NAME,
-
-        AssumeRolePolicyDocument=
-        json.dumps(
-            trust_policy
-        )
-    )
-
-    iam_client.put_role_policy(
-
-        RoleName=
-        CLEANER_ROLE_NAME,
-
-        PolicyName=
-        CLEANER_POLICY_NAME,
-
-        PolicyDocument=
-        json.dumps(
-            permissions_policy
-        )
-    )
-
-    logger.info(
-        f"Created role: "
-        f"{CLEANER_ROLE_NAME}"
-    )
-
-    return True
-
-
-def ensure_cleaner_role(
-    iam_client,
-    trusted_role_arn,
     logger
 ):
 
@@ -314,50 +165,45 @@ def ensure_cleaner_role(
         iam_client
     ):
 
-        return create_cleaner_role(
-
-            iam_client=
-            iam_client,
-
-            trusted_role_arn=
-            trusted_role_arn,
-
-            logger=
-            logger
+        logger.error(
+            f"{CLEANER_ROLE_NAME} "
+            f"does not exist"
         )
+
+        return False
 
     logger.info(
         f"{CLEANER_ROLE_NAME} "
-        f"already exists"
+        f"exists"
     )
 
-    trust_updated = (
+    trust_valid = (
         validate_trust_policy(
-
-            iam_client=
             iam_client,
-
-            trusted_role_arn=
-            trusted_role_arn,
-
-            logger=
             logger
         )
     )
 
-    permissions_updated = (
+    permissions_valid = (
         validate_permissions_policy(
-
-            iam_client=
-            iam_client,
-
-            logger=
-            logger
+            iam_client
         )
     )
+
+    if permissions_valid:
+
+        logger.info(
+            "Cleaner permissions validated"
+        )
+
+    else:
+
+        logger.warning(
+            "Cleaner permissions drift detected"
+        )
 
     return (
-        trust_updated
-        or
-        permissions_updated
+        trust_valid
+        and
+        permissions_valid
     )

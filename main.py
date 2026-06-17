@@ -93,20 +93,11 @@ def main():
     logger = get_logger()
 
     roles_csv = select_file(
+
         "inputs",
         "*.csv",
         "Role CSV Files"
     )
-
-    cross_account_role = input(
-        "\nCross Account Role Name: "
-    ).strip()
-
-    if not cross_account_role:
-
-        raise Exception(
-            "Cross Account Role Name required"
-        )
 
     grouped_roles = load_roles(
         roles_csv
@@ -117,8 +108,10 @@ def main():
     )
 
     total_roles = sum(
-        len(v)
-        for v
+
+        len(roles)
+
+        for roles
         in grouped_roles.values()
     )
 
@@ -130,11 +123,6 @@ def main():
     logger.info(
         f"Total roles: "
         f"{total_roles}"
-    )
-
-    logger.info(
-        f"Cross Account Role: "
-        f"{cross_account_role}"
     )
 
     backup_manager = (
@@ -160,19 +148,28 @@ def main():
         backup_manager,
 
         operator_session=
-        operator_session,
-
-        cross_account_role=
-        cross_account_role
+        operator_session
     )
 
     if error_collector.count():
+
+        Path(
+            "output"
+        ).mkdir(
+            exist_ok=True
+        )
 
         error_collector.write_to_csv(
             "output/role_deletion_errors.csv"
         )
 
+        logger.warning(
+            "Error report generated: "
+            "output/role_deletion_errors.csv"
+        )
+
     error_collector.print_summary(
+
         logger,
         backup_manager.get_backup_file_path()
     )

@@ -20,6 +20,43 @@ RETRYABLE_CODES = {
 }
 
 
+def validate_role_identity(
+    account_id,
+    role_name,
+    role_arn
+):
+
+    expected_prefix = (
+        f"arn:aws:iam::{account_id}:role/"
+    )
+
+    if not role_arn.startswith(
+        expected_prefix
+    ):
+
+        raise ValueError(
+
+            f"RoleArn does not belong "
+            f"to account {account_id}: "
+            f"{role_arn}"
+        )
+
+    arn_role_name = (
+        role_arn.split(
+            "/"
+        )[-1]
+    )
+
+    if arn_role_name != role_name:
+
+        raise ValueError(
+
+            f"RoleName mismatch. "
+            f"CSV Name={role_name}, "
+            f"ARN Name={arn_role_name}"
+        )
+
+
 def _retryable_call(
     func,
     **kwargs
@@ -183,10 +220,23 @@ def delete_role_fully(
     iam_client,
     account_id,
     role_name,
+    role_arn,
     backup_manager,
     error_collector,
     dry_run=False
 ):
+
+    validate_role_identity(
+
+        account_id=
+        account_id,
+
+        role_name=
+        role_name,
+
+        role_arn=
+        role_arn
+    )
 
     try:
 
@@ -195,8 +245,17 @@ def delete_role_fully(
             backup_manager
             .capture_role_metadata(
 
+                iam_client=
                 iam_client,
-                role_name
+
+                account_id=
+                account_id,
+
+                role_name=
+                role_name,
+
+                role_arn=
+                role_arn
             )
         )
 
@@ -228,8 +287,13 @@ def delete_role_fully(
 
         backup_manager.persist_role_backup(
 
+            account_id=
             account_id,
+
+            role_name=
             role_name,
+
+            metadata=
             metadata
         )
 

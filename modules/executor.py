@@ -1,5 +1,3 @@
-import time
-
 from concurrent.futures import (
     ThreadPoolExecutor,
     as_completed
@@ -19,8 +17,8 @@ from modules.auth import (
 )
 
 from modules.iam_setup import (
-    ensure_cleaner_role,
-    get_cleaner_role_arn
+    get_cleaner_role_arn,
+    validate_cleaner_role
 )
 
 from modules.error_collector import (
@@ -36,8 +34,7 @@ def execute(
     grouped_roles,
     logger,
     backup_manager,
-    operator_session,
-    cross_account_role
+    operator_session
 ):
 
     error_collector = ErrorCollector()
@@ -45,7 +42,9 @@ def execute(
     progress_lock = Lock()
 
     total_roles = sum(
+
         len(roles)
+
         for roles
         in grouped_roles.values()
     )
@@ -62,6 +61,10 @@ def execute(
 
         role_name = role[
             "role_name"
+        ]
+
+        role_arn = role[
+            "role_arn"
         ]
 
         logger.info(
@@ -81,6 +84,9 @@ def execute(
 
                 role_name=
                 role_name,
+
+                role_arn=
+                role_arn,
 
                 backup_manager=
                 backup_manager,
@@ -128,103 +134,145 @@ def execute(
             f"{account_id}"
         )
 
-        cross_account_role_arn = (
-
-            f"arn:aws:iam::"
-            f"{account_id}:role/"
-            f"{cross_account_role}"
-
-        )
-
-        logger.info(
-            f"Assuming bootstrap role: "
-            f"{cross_account_role_arn}"
-        )
-
-        bootstrap_session = (
-            assume_role(
-
-                session=
-                operator_session,
-
-                role_arn=
-                cross_account_role_arn,
-
-                session_name=
-                f"bootstrap-"
-                f"{account_id}"
-            )
-        )
-
-        validate_session_account(
-            bootstrap_session,
-            account_id
-        )
-
-        bootstrap_iam = (
-            bootstrap_session.client(
-                "iam"
-            )
-        )
-
-        cleaner_updated = (
-            ensure_cleaner_role(
-
-                iam_client=
-                bootstrap_iam,
-
-                trusted_role_arn=
-                cross_account_role_arn,
-
-                logger=
-                logger
-            )
-        )
-
-        if cleaner_updated:
-
-            logger.info(
-                "Waiting for IAM policy propagation..."
-            )
-
-            time.sleep(15)
-
         cleaner_role_arn = (
             get_cleaner_role_arn(
                 account_id
             )
         )
 
-        logger.info(
-            f"Assuming cleaner role: "
-            f"{cleaner_role_arn}"
-        )
+        try:
 
-        cleaner_session = (
-            assume_role(
-
-                session=
-                bootstrap_session,
-
-                role_arn=
-                cleaner_role_arn,
-
-                session_name=
-                f"cleanup-"
-                f"{account_id}"
+            logger.info(
+                f"Assuming cleaner role: "
+                f"{cleaner_role_arn}"
             )
-        )
 
-        validate_session_account(
-            cleaner_session,
-            account_id
-        )
+            cleaner_session = (
+                assume_role(
+
+                    session=
+                    operator_session,
+
+                    role_arn=
+                    cleaner_role_arn,
+
+                    session_name=
+                    f"cleanup-"
+                    f"{account_id}"
+                )
+            )
+
+            validate_session_account(
+                cleaner_session,
+                account_id
+            )
+
+        except Exception as error:
+
+            logger.error(
+                f"{account_id} | "
+                f"ACCOUNT_INIT | "
+                f"{str(error)}"
+            )
+
+            error_collector.add(
+
+                account_id=
+                account_id,
+
+                role_name=
+                "ACCOUNT_INIT",
+
+                stage=
+                "DELETE",
+
+                operation=
+                "ASSUME_CLEANER_ROLE",
+
+                error_type=
+                type(error).__name__,
+
+                message=
+                str(error)
+            )
+
+            return
 
         iam_client = (
             cleaner_session.client(
                 "iam"
             )
         )
+
+        try:
+
+            validation_result = (
+                validate_cleaner_role(
+                    iam_client,
+                    logger
+                )
+            )
+
+            if not validation_result:
+
+                error_collector.add(
+
+                    account_id=
+                    account_id,
+
+                    role_name=
+                    "ACCOUNT_INIT",
+
+                    stage=
+                    "DELETE",
+
+                    operation=
+                    "VALIDATE_CLEANER_ROLE",
+
+                    error_type=
+                    "CleanerRoleValidationFailed",
+
+                    message=
+                    "Cleaner role validation failed"
+                )
+
+                logger.error(
+                    f"{account_id} | "
+                    f"Cleaner role validation failed"
+                )
+
+                return
+
+        except Exception as error:
+
+            error_collector.add(
+
+                account_id=
+                account_id,
+
+                role_name=
+                "ACCOUNT_INIT",
+
+                stage=
+                "DELETE",
+
+                operation=
+                "VALIDATE_CLEANER_ROLE",
+
+                error_type=
+                type(error).__name__,
+
+                message=
+                str(error)
+            )
+
+            logger.error(
+                f"{account_id} | "
+                f"Cleaner validation error | "
+                f"{str(error)}"
+            )
+
+            return
 
         with ThreadPoolExecutor(
             max_workers=

@@ -9,6 +9,9 @@ from zoneinfo import ZoneInfo
 class RoleBackupManager:
 
     REQUIRED_SCHEMA = {
+        "account_id": str,
+        "role_name": str,
+        "role_arn": str,
         "path": str,
         "description": str,
         "max_session_duration": int,
@@ -42,17 +45,21 @@ class RoleBackupManager:
         )
 
         self.backup_store = {
+
             "backup_metadata": {
+
                 "created_at": (
                     datetime.now(
                         ZoneInfo("Asia/Kolkata")
                     ).isoformat()
                 ),
+
                 "accounts": [],
                 "total_accounts": 0,
                 "total_roles": 0,
-                "version": "2.0"
+                "version": "3.0"
             },
+
             "accounts": {}
         }
 
@@ -63,7 +70,9 @@ class RoleBackupManager:
     def capture_role_metadata(
         self,
         iam_client,
-        role_name
+        account_id,
+        role_name,
+        role_arn
     ):
 
         role_response = iam_client.get_role(
@@ -73,24 +82,47 @@ class RoleBackupManager:
         role = role_response["Role"]
 
         metadata = {
-            "path": role.get(
+
+            "account_id":
+            account_id,
+
+            "role_name":
+            role_name,
+
+            "role_arn":
+            role_arn,
+
+            "path":
+            role.get(
                 "Path",
                 "/"
             ),
-            "description": role.get(
+
+            "description":
+            role.get(
                 "Description",
                 ""
             ),
-            "max_session_duration": role.get(
+
+            "max_session_duration":
+            role.get(
                 "MaxSessionDuration",
                 3600
             ),
-            "trust_policy": role.get(
+
+            "trust_policy":
+            role.get(
                 "AssumeRolePolicyDocument"
             ),
-            "managed_policies": [],
-            "inline_policies": {},
-            "instance_profiles": []
+
+            "managed_policies":
+            [],
+
+            "inline_policies":
+            {},
+
+            "instance_profiles":
+            []
         }
 
         paginator = iam_client.get_paginator(
@@ -108,10 +140,14 @@ class RoleBackupManager:
                 metadata[
                     "managed_policies"
                 ].append({
-                    "PolicyArn": policy[
+
+                    "PolicyArn":
+                    policy[
                         "PolicyArn"
                     ],
-                    "PolicyName": policy[
+
+                    "PolicyName":
+                    policy[
                         "PolicyName"
                     ]
                 })
@@ -138,6 +174,7 @@ class RoleBackupManager:
                 metadata[
                     "inline_policies"
                 ][policy_name] = (
+
                     policy_response[
                         "PolicyDocument"
                     ]
@@ -158,6 +195,7 @@ class RoleBackupManager:
                 metadata[
                     "instance_profiles"
                 ].append({
+
                     "InstanceProfileName":
                     profile[
                         "InstanceProfileName"
@@ -190,6 +228,7 @@ class RoleBackupManager:
         if missing_keys:
 
             raise ValueError(
+
                 f"Role {role_name} missing "
                 f"required backup keys: "
                 f"{', '.join(missing_keys)}"
@@ -208,6 +247,7 @@ class RoleBackupManager:
             ):
 
                 raise TypeError(
+
                     f"Role {role_name}: "
                     f"'{key}' must be "
                     f"{expected_type.__name__}, "
@@ -220,6 +260,7 @@ class RoleBackupManager:
         ] is None:
 
             raise ValueError(
+
                 f"Role {role_name}: "
                 f"trust_policy cannot be None"
             )
@@ -233,15 +274,18 @@ class RoleBackupManager:
 
         with self.lock:
 
-            accounts = self.backup_store[
-                "accounts"
-            ]
+            accounts = (
+                self.backup_store[
+                    "accounts"
+                ]
+            )
 
             if account_id not in accounts:
 
                 accounts[
                     account_id
                 ] = {
+
                     "roles": {},
                     "role_count": 0
                 }
@@ -259,6 +303,7 @@ class RoleBackupManager:
             ][
                 "role_count"
             ] = len(
+
                 accounts[
                     account_id
                 ][
@@ -271,9 +316,11 @@ class RoleBackupManager:
             )
 
             total_roles = sum(
+
                 account_data[
                     "role_count"
                 ]
+
                 for account_data
                 in accounts.values()
             )
