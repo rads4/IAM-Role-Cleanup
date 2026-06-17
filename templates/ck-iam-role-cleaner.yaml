@@ -1,0 +1,103 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  CloudKeeper IAM Role Cleaner.
+  Creates the ck-iam-role-cleaner role used for
+  IAM role backup, deletion and restore operations.
+
+Resources:
+
+  CleanerRole:
+
+    Type: AWS::IAM::Role
+
+    Properties:
+
+      RoleName: ck-iam-role-cleaner
+
+      Description: >
+        CloudKeeper IAM Role Cleanup Role
+
+      MaxSessionDuration: 3600
+
+      AssumeRolePolicyDocument:
+
+        Version: "2012-10-17"
+
+        Statement:
+
+          - Effect: Allow
+
+            Principal:
+
+              AWS: arn:aws:iam::738759745978:user/Radz
+
+            Action:
+
+              - sts:AssumeRole
+
+      Policies:
+
+        - PolicyName: iam-role-cleaner-policy
+
+          PolicyDocument:
+
+            Version: "2012-10-17"
+
+            Statement:
+
+              - Sid: BackupPermissions
+
+                Effect: Allow
+
+                Action:
+
+                  - iam:GetRole
+                  - iam:GetRolePolicy
+                  - iam:ListRolePolicies
+                  - iam:ListAttachedRolePolicies
+                  - iam:ListInstanceProfilesForRole
+                  - iam:GetInstanceProfile
+
+                Resource: "*"
+
+              - Sid: DeletePermissions
+
+                Effect: Allow
+
+                Action:
+
+                  - iam:DetachRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:RemoveRoleFromInstanceProfile
+                  - iam:DeleteRole
+
+                Resource: "*"
+
+              - Sid: RestorePermissions
+
+                Effect: Allow
+
+                Action:
+
+                  - iam:CreateRole
+                  - iam:AttachRolePolicy
+                  - iam:PutRolePolicy
+                  - iam:AddRoleToInstanceProfile
+
+                Resource: "*"
+
+
+Outputs:
+
+  CleanerRoleArn:
+
+    Description: Cleaner Role ARN
+
+    Value: !GetAtt CleanerRole.Arn
+
+  CleanerRoleName:
+
+    Description: Cleaner Role Name
+
+    Value: !Ref CleanerRole
