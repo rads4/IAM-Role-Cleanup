@@ -1,26 +1,38 @@
-import json
-
 from botocore.exceptions import (
     ClientError
 )
 
 from config.settings import (
     CLEANER_ROLE_NAME,
-    CLEANER_POLICY_NAME
+    CLEANER_POLICY_NAME,
+    TRUSTED_PRINCIPAL_ARN
 )
 
 
 REQUIRED_ACTIONS = sorted([
 
+    # Backup
+
     "iam:GetRole",
-    "iam:ListRolePolicies",
     "iam:GetRolePolicy",
+    "iam:ListRolePolicies",
     "iam:ListAttachedRolePolicies",
+    "iam:ListInstanceProfilesForRole",
+    "iam:GetInstanceProfile",
+
+    # Delete
+
     "iam:DetachRolePolicy",
     "iam:DeleteRolePolicy",
+    "iam:RemoveRoleFromInstanceProfile",
     "iam:DeleteRole",
-    "iam:ListInstanceProfilesForRole",
-    "iam:RemoveRoleFromInstanceProfile"
+
+    # Restore
+
+    "iam:CreateRole",
+    "iam:AttachRolePolicy",
+    "iam:PutRolePolicy",
+    "iam:AddRoleToInstanceProfile"
 ])
 
 
@@ -81,15 +93,46 @@ def validate_permissions_policy(
             )
         )
 
-        current_actions = sorted(
-
+        policy_document = (
             policy[
                 "PolicyDocument"
-            ][
-                "Statement"
-            ][0][
-                "Action"
             ]
+        )
+
+        discovered_actions = []
+
+        for statement in (
+            policy_document[
+                "Statement"
+            ]
+        ):
+
+            actions = (
+                statement.get(
+                    "Action",
+                    []
+                )
+            )
+
+            if isinstance(
+                actions,
+                str
+            ):
+
+                discovered_actions.append(
+                    actions
+                )
+
+            else:
+
+                discovered_actions.extend(
+                    actions
+                )
+
+        current_actions = sorted(
+            set(
+                discovered_actions
+            )
         )
 
         return (
@@ -136,6 +179,39 @@ def validate_trust_policy(
 
             logger.warning(
                 "Cleaner role trust policy empty"
+            )
+
+            return False
+
+        trusted_principal = (
+            statements[0]
+            .get(
+                "Principal",
+                {}
+            )
+            .get(
+                "AWS"
+            )
+        )
+
+        if (
+            trusted_principal
+            !=
+            TRUSTED_PRINCIPAL_ARN
+        ):
+
+            logger.warning(
+                "Cleaner trust policy drift detected"
+            )
+
+            logger.warning(
+                f"Expected: "
+                f"{TRUSTED_PRINCIPAL_ARN}"
+            )
+
+            logger.warning(
+                f"Found: "
+                f"{trusted_principal}"
             )
 
             return False

@@ -27,3 +27,7 @@ CLEANER_POLICY_NAME = (
 ASSUME_ROLE_SESSION_NAME = (
     "iam-cleanup-session"
 )
+
+TRUSTED_PRINCIPAL_ARN = (
+    "arn:aws:iam::738759745978:user/Radz"
+)

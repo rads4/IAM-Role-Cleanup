@@ -1,0 +1,205 @@
+{
+  "backup_metadata": {
+    "created_at": "2026-06-17T16:06:54.587637+05:30",
+    "accounts": [
+      "738759745978"
+    ],
+    "total_accounts": 1,
+    "total_roles": 5,
+    "version": "3.0"
+  },
+  "accounts": {
+    "738759745978": {
+      "roles": {
+        "CK-Jenkins-Test-App-01": {
+          "account_id": "738759745978",
+          "role_name": "CK-Jenkins-Test-App-01",
+          "role_arn": "arn:aws:iam::738759745978:role/CK-Jenkins-Test-App-01",
+          "path": "/",
+          "description": "Jenkins POC role CK-Jenkins-Test-App-01",
+          "max_session_duration": 3600,
+          "trust_policy": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": "ec2.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+              }
+            ]
+          },
+          "managed_policies": [
+            {
+              "PolicyArn": "arn:aws:iam::aws:policy/ReadOnlyAccess",
+              "PolicyName": "ReadOnlyAccess"
+            }
+          ],
+          "inline_policies": {
+            "CK-Jenkins-Test-App-01-InlinePolicy": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:ListBucket"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
+          },
+          "instance_profiles": []
+        },
+        "CK-Jenkins-Test-App-05": {
+          "account_id": "738759745978",
+          "role_name": "CK-Jenkins-Test-App-05",
+          "role_arn": "arn:aws:iam::738759745978:role/CK-Jenkins-Test-App-05",
+          "path": "/",
+          "description": "Jenkins POC role CK-Jenkins-Test-App-05",
+          "max_session_duration": 3600,
+          "trust_policy": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": "ec2.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+              }
+            ]
+          },
+          "managed_policies": [],
+          "inline_policies": {},
+          "instance_profiles": []
+        },
+        "CK-Jenkins-Test-App-02": {
+          "account_id": "738759745978",
+          "role_name": "CK-Jenkins-Test-App-02",
+          "role_arn": "arn:aws:iam::738759745978:role/CK-Jenkins-Test-App-02",
+          "path": "/",
+          "description": "Jenkins POC role CK-Jenkins-Test-App-02",
+          "max_session_duration": 3600,
+          "trust_policy": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": "ec2.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+              }
+            ]
+          },
+          "managed_policies": [
+            {
+              "PolicyArn": "arn:aws:iam::aws:policy/ReadOnlyAccess",
+              "PolicyName": "ReadOnlyAccess"
+            }
+          ],
+          "inline_policies": {
+            "CK-Jenkins-Test-App-02-InlinePolicy": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:ListBucket"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
+          },
+          "instance_profiles": []
+        },
+        "CK-Jenkins-Test-App-03": {
+          "account_id": "738759745978",
+          "role_name": "CK-Jenkins-Test-App-03",
+          "role_arn": "arn:aws:iam::738759745978:role/CK-Jenkins-Test-App-03",
+          "path": "/",
+          "description": "Jenkins POC role CK-Jenkins-Test-App-03",
+          "max_session_duration": 3600,
+          "trust_policy": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": "ec2.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+              }
+            ]
+          },
+          "managed_policies": [
+            {
+              "PolicyArn": "arn:aws:iam::aws:policy/ReadOnlyAccess",
+              "PolicyName": "ReadOnlyAccess"
+            }
+          ],
+          "inline_policies": {
+            "CK-Jenkins-Test-App-03-InlinePolicy": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:ListBucket"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
+          },
+          "instance_profiles": []
+        },
+        "CK-Jenkins-Test-App-04": {
+          "account_id": "738759745978",
+          "role_name": "CK-Jenkins-Test-App-04",
+          "role_arn": "arn:aws:iam::738759745978:role/CK-Jenkins-Test-App-04",
+          "path": "/",
+          "description": "Jenkins POC role CK-Jenkins-Test-App-04",
+          "max_session_duration": 3600,
+          "trust_policy": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": "ec2.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+              }
+            ]
+          },
+          "managed_policies": [
+            {
+              "PolicyArn": "arn:aws:iam::aws:policy/ReadOnlyAccess",
+              "PolicyName": "ReadOnlyAccess"
+            }
+          ],
+          "inline_policies": {
+            "CK-Jenkins-Test-App-04-InlinePolicy": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:ListBucket"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
+          },
+          "instance_profiles": []
+        }
+      },
+      "role_count": 5
+    }
+  }
+}
