@@ -1,6 +1,0 @@
-AccountId,Arn,Name
-738759745978,arn:aws:iam::738759745978:role/CK-Jenkins-Test-App-01,CK-Jenkins-Test-App-01
-738759745978,arn:aws:iam::738759745978:role/CK-Jenkins-Test-App-02,CK-Jenkins-Test-App-02
-738759745978,arn:aws:iam::738759745978:role/CK-Jenkins-Test-App-03,CK-Jenkins-Test-App-03
-738759745978,arn:aws:iam::738759745978:role/CK-Jenkins-Test-App-04,CK-Jenkins-Test-App-04
-738759745978,arn:aws:iam::738759745978:role/CK-Jenkins-Test-App-05,CK-Jenkins-Test-App-05
