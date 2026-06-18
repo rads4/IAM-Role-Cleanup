@@ -1,8 +1,41 @@
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
-inputs/account_credentials.csv
-inputs/roles.csv
+# Virtual environments
+venv/
+.venv/
+env/
 
+# IDE
 .vscode/
 .idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Runtime logs
+*.log
+
+# Generated backups
+backups/*.json
+backups/*.metadata.json
+
+# Generated reports
+output/*.csv
+output/*.json
+
+# Local test files
+test_*.py
+
+# Python build artifacts
+build/
+dist/
+*.egg-info/
+
+# Secrets
+.env
+.env.*
