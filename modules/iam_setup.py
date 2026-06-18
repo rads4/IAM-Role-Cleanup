@@ -5,7 +5,7 @@ from botocore.exceptions import (
 from config.settings import (
     CLEANER_ROLE_NAME,
     CLEANER_POLICY_NAME,
-    TRUSTED_PRINCIPAL_ARN
+    JENKINS_MASTER_ROLE_ARN
 )
 
 
@@ -183,21 +183,44 @@ def validate_trust_policy(
 
             return False
 
-        trusted_principal = (
-            statements[0]
-            .get(
-                "Principal",
-                {}
+        trusted_principal = None
+
+        for statement in statements:
+
+            principal = (
+                statement.get(
+                    "Principal",
+                    {}
+                )
             )
-            .get(
-                "AWS"
+
+            aws_principal = (
+                principal.get(
+                    "AWS"
+                )
             )
-        )
+
+            if aws_principal:
+
+                trusted_principal = (
+                    aws_principal
+                )
+
+                break
+
+        if not trusted_principal:
+
+            logger.warning(
+                "No AWS principal found "
+                "in cleaner trust policy"
+            )
+
+            return False
 
         if (
             trusted_principal
             !=
-            TRUSTED_PRINCIPAL_ARN
+            JENKINS_MASTER_ROLE_ARN
         ):
 
             logger.warning(
@@ -206,7 +229,7 @@ def validate_trust_policy(
 
             logger.warning(
                 f"Expected: "
-                f"{TRUSTED_PRINCIPAL_ARN}"
+                f"{JENKINS_MASTER_ROLE_ARN}"
             )
 
             logger.warning(

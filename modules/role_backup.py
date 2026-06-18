@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 class RoleBackupManager:
 
     REQUIRED_SCHEMA = {
+
         "account_id": str,
         "role_name": str,
         "role_arn": str,
@@ -21,18 +22,27 @@ class RoleBackupManager:
         "instance_profiles": list
     }
 
-    def __init__(self, backup_dir):
+    def __init__(
+        self,
+        backup_dir
+    ):
 
-        self.lock = threading.Lock()
+        self.lock = (
+            threading.Lock()
+        )
 
         os.makedirs(
+
             backup_dir,
             exist_ok=True
         )
 
         timestamp = (
+
             datetime.now(
-                ZoneInfo("Asia/Kolkata")
+                ZoneInfo(
+                    "Asia/Kolkata"
+                )
             )
             .strftime(
                 "%Y-%m-%d_%I-%M-%p_IST"
@@ -40,32 +50,58 @@ class RoleBackupManager:
         )
 
         self.backup_file = os.path.join(
+
             backup_dir,
+
             f"role_backup_{timestamp}.json"
+        )
+
+        self.metadata_file = os.path.join(
+
+            backup_dir,
+
+            f"role_backup_{timestamp}.metadata.json"
         )
 
         self.backup_store = {
 
             "backup_metadata": {
 
-                "created_at": (
-                    datetime.now(
-                        ZoneInfo("Asia/Kolkata")
-                    ).isoformat()
-                ),
+                "created_at":
+
+                datetime.now(
+                    ZoneInfo(
+                        "Asia/Kolkata"
+                    )
+                ).isoformat(),
+
+                "timezone":
+                "Asia/Kolkata",
+
+                "version":
+                "4.0",
 
                 "accounts": [],
+
                 "total_accounts": 0,
-                "total_roles": 0,
-                "version": "3.0"
+
+                "total_roles": 0
             },
 
             "accounts": {}
         }
 
-    def get_backup_file_path(self):
+    def get_backup_file_path(
+        self
+    ):
 
         return self.backup_file
+
+    def get_metadata_file_path(
+        self
+    ):
+
+        return self.metadata_file
 
     def capture_role_metadata(
         self,
@@ -75,11 +111,16 @@ class RoleBackupManager:
         role_arn
     ):
 
-        role_response = iam_client.get_role(
-            RoleName=role_name
+        role_response = (
+            iam_client.get_role(
+                RoleName=
+                role_name
+            )
         )
 
-        role = role_response["Role"]
+        role = role_response[
+            "Role"
+        ]
 
         metadata = {
 
@@ -111,9 +152,9 @@ class RoleBackupManager:
             ),
 
             "trust_policy":
-            role.get(
+            role[
                 "AssumeRolePolicyDocument"
-            ),
+            ],
 
             "managed_policies":
             [],
@@ -125,8 +166,10 @@ class RoleBackupManager:
             []
         }
 
-        paginator = iam_client.get_paginator(
-            "list_attached_role_policies"
+        paginator = (
+            iam_client.get_paginator(
+                "list_attached_role_policies"
+            )
         )
 
         for page in paginator.paginate(
@@ -152,8 +195,10 @@ class RoleBackupManager:
                     ]
                 })
 
-        paginator = iam_client.get_paginator(
-            "list_role_policies"
+        paginator = (
+            iam_client.get_paginator(
+                "list_role_policies"
+            )
         )
 
         for page in paginator.paginate(
@@ -164,24 +209,29 @@ class RoleBackupManager:
                 "PolicyNames"
             ]:
 
-                policy_response = (
+                response = (
                     iam_client.get_role_policy(
-                        RoleName=role_name,
-                        PolicyName=policy_name
+
+                        RoleName=
+                        role_name,
+
+                        PolicyName=
+                        policy_name
                     )
                 )
 
                 metadata[
                     "inline_policies"
-                ][policy_name] = (
+                ][
+                    policy_name
+                ] = response[
+                    "PolicyDocument"
+                ]
 
-                    policy_response[
-                        "PolicyDocument"
-                    ]
-                )
-
-        paginator = iam_client.get_paginator(
-            "list_instance_profiles_for_role"
+        paginator = (
+            iam_client.get_paginator(
+                "list_instance_profiles_for_role"
+            )
         )
 
         for page in paginator.paginate(
@@ -203,6 +253,7 @@ class RoleBackupManager:
                 })
 
         self.validate_metadata(
+
             role_name,
             metadata
         )
@@ -229,8 +280,8 @@ class RoleBackupManager:
 
             raise ValueError(
 
-                f"Role {role_name} missing "
-                f"required backup keys: "
+                f"Role {role_name} "
+                f"missing keys: "
                 f"{', '.join(missing_keys)}"
             )
 
@@ -239,31 +290,18 @@ class RoleBackupManager:
             expected_type
         ) in self.REQUIRED_SCHEMA.items():
 
-            value = metadata[key]
-
             if not isinstance(
-                value,
+
+                metadata[key],
                 expected_type
             ):
 
                 raise TypeError(
 
-                    f"Role {role_name}: "
-                    f"'{key}' must be "
-                    f"{expected_type.__name__}, "
-                    f"found "
-                    f"{type(value).__name__}"
+                    f"{role_name} | "
+                    f"{key} expected "
+                    f"{expected_type.__name__}"
                 )
-
-        if metadata[
-            "trust_policy"
-        ] is None:
-
-            raise ValueError(
-
-                f"Role {role_name}: "
-                f"trust_policy cannot be None"
-            )
 
     def persist_role_backup(
         self,
@@ -287,6 +325,7 @@ class RoleBackupManager:
                 ] = {
 
                     "roles": {},
+
                     "role_count": 0
                 }
 
@@ -345,28 +384,155 @@ class RoleBackupManager:
                 "total_roles"
             ] = total_roles
 
-            temp_file = (
-                f"{self.backup_file}.tmp"
+            self._write_backup()
+
+    def _write_backup(
+        self
+    ):
+
+        temp_file = (
+            f"{self.backup_file}.tmp"
+        )
+
+        with open(
+            temp_file,
+            "w"
+        ) as file:
+
+            json.dump(
+
+                self.backup_store,
+
+                file,
+
+                indent=2
             )
 
-            with open(
-                temp_file,
-                "w"
-            ) as file:
+            file.flush()
 
-                json.dump(
-                    self.backup_store,
-                    file,
-                    indent=2
+            os.fsync(
+                file.fileno()
+            )
+
+        os.replace(
+
+            temp_file,
+
+            self.backup_file
+        )
+
+    def write_metadata(
+        self,
+        action,
+        dry_run,
+        build_number=None,
+        build_url=None,
+        git_commit=None
+    ):
+
+        metadata = {
+
+            "created_at":
+
+            datetime.now(
+                ZoneInfo(
+                    "Asia/Kolkata"
                 )
+            ).isoformat(),
 
-                file.flush()
+            "action":
+            action,
 
-                os.fsync(
-                    file.fileno()
-                )
+            "dry_run":
+            dry_run,
 
-            os.replace(
-                temp_file,
+            "build_number":
+            build_number,
+
+            "build_url":
+            build_url,
+
+            "git_commit":
+            git_commit,
+
+            "backup_file":
+            os.path.basename(
                 self.backup_file
+            ),
+
+            "accounts":
+
+            self.backup_store[
+                "backup_metadata"
+            ][
+                "accounts"
+            ],
+
+            "total_accounts":
+
+            self.backup_store[
+                "backup_metadata"
+            ][
+                "total_accounts"
+            ],
+
+            "total_roles":
+
+            self.backup_store[
+                "backup_metadata"
+            ][
+                "total_roles"
+            ]
+        }
+
+        with open(
+            self.metadata_file,
+            "w"
+        ) as file:
+
+            json.dump(
+
+                metadata,
+
+                file,
+
+                indent=2
             )
+
+    def print_backup_json(
+        self,
+        logger
+    ):
+
+        logger.info(
+            "=" * 100
+        )
+
+        logger.info(
+            "FULL BACKUP JSON"
+        )
+
+        logger.info(
+            "=" * 100
+        )
+
+        with open(
+            self.backup_file
+        ) as file:
+
+            logger.info(
+                file.read()
+            )
+
+        logger.info(
+            "=" * 100
+        )
+
+        logger.info(
+            f"BACKUP FILE: "
+            f"{self.backup_file}"
+        )
+
+        logger.info(
+            "=" * 100
+        )

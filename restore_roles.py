@@ -1,7 +1,6 @@
 import json
 import sys
-
-from pathlib import Path
+import argparse
 
 from botocore.exceptions import (
     ClientError
@@ -37,11 +36,7 @@ def role_exists(
     except ClientError as error:
 
         if (
-            error.response[
-                "Error"
-            ][
-                "Code"
-            ]
+            error.response["Error"]["Code"]
             ==
             "NoSuchEntity"
         ):
@@ -81,8 +76,8 @@ def validate_role_identity(
         raise ValueError(
 
             f"RoleName mismatch. "
-            f"Backup Name={role_name}, "
-            f"ARN Name={arn_role_name}"
+            f"Backup={role_name}, "
+            f"ARN={arn_role_name}"
         )
 
 
@@ -124,8 +119,9 @@ def restore_role(
     ):
 
         logger.warning(
-            f"Role already exists: "
-            f"{role_name}"
+            f"{account_id} | "
+            f"{role_name} | "
+            f"Already exists"
         )
 
         return "skipped"
@@ -133,8 +129,9 @@ def restore_role(
     if dry_run:
 
         logger.info(
-            f"DRY RUN -> "
-            f"{role_name}"
+            f"{account_id} | "
+            f"{role_name} | "
+            f"DRY RUN"
         )
 
         return "dry_run"
@@ -220,123 +217,237 @@ def restore_role(
                     role_name
                 )
 
-            except Exception:
+            except Exception as error:
 
-                pass
+                logger.warning(
+
+                    f"{account_id} | "
+                    f"{role_name} | "
+                    f"Profile restore failed | "
+                    f"{str(error)}"
+                )
 
     logger.info(
-        f"Restored role: "
-        f"{role_name}"
+
+        f"{account_id} | "
+        f"{role_name} | "
+        f"Restored"
     )
 
     return "restored"
 
 
-def select_backup_file():
-
-    backup_dir = Path(
-        "backups"
-    )
-
-    backup_files = sorted(
-        backup_dir.glob(
-            "*.json"
-        ),
-        reverse=True
-    )
-
-    if not backup_files:
-
-        raise Exception(
-            "No backup files found"
-        )
-
-    print(
-        "\nAvailable Backup Files:\n"
-    )
-
-    for index, file in enumerate(
-        backup_files,
-        start=1
-    ):
-
-        print(
-            f"{index}. "
-            f"{file.name}"
-        )
-
-    while True:
-
-        choice = input(
-            "\nSelect Backup: "
-        ).strip()
-
-        try:
-
-            return str(
-                backup_files[
-                    int(choice) - 1
-                ]
-            )
-
-        except Exception:
-
-            print(
-                "Invalid selection"
-            )
-
-
-def ask_yes_no(
-    question
+def load_backup(
+    backup_file
 ):
-
-    while True:
-
-        answer = input(
-            f"\n{question} "
-            f"(y/n): "
-        ).strip().lower()
-
-        if answer in [
-            "y",
-            "yes"
-        ]:
-
-            return True
-
-        if answer in [
-            "n",
-            "no"
-        ]:
-
-            return False
-
-
-def main():
-
-    logger = get_logger()
-
-    backup_file = (
-        select_backup_file()
-    )
 
     with open(
         backup_file
     ) as file:
 
-        backup_data = json.load(
+        return json.load(
             file
         )
 
+
+def get_roles_to_restore(
+    backup_data,
+    restore_scope,
+    account_id=None,
+    role_names=None
+):
+
+    results = {}
+
+    accounts = (
+        backup_data[
+            "accounts"
+        ]
+    )
+
+    if restore_scope == "FULL":
+
+        return accounts
+
+    if restore_scope == "ACCOUNT":
+
+        if not account_id:
+
+            raise ValueError(
+                "--account-id required "
+                "for ACCOUNT restore"
+            )
+
+        if account_id not in accounts:
+
+            raise ValueError(
+
+                f"Account not found: "
+                f"{account_id}"
+            )
+
+        results[
+            account_id
+        ] = accounts[
+            account_id
+        ]
+
+        return results
+
+    if restore_scope == "ROLE":
+
+        if not account_id:
+
+            raise ValueError(
+                "--account-id required "
+                "for ROLE restore"
+            )
+
+        if not role_names:
+
+            raise ValueError(
+                "--role-names required "
+                "for ROLE restore"
+            )
+
+        if account_id not in accounts:
+
+            raise ValueError(
+
+                f"Account not found: "
+                f"{account_id}"
+            )
+
+        requested_roles = {
+
+            role.strip()
+
+            for role
+            in role_names.split(",")
+
+            if role.strip()
+        }
+
+        selected_roles = {}
+
+        for (
+            role_name,
+            metadata
+        ) in accounts[
+            account_id
+        ][
+            "roles"
+        ].items():
+
+            if role_name in requested_roles:
+
+                selected_roles[
+                    role_name
+                ] = metadata
+
+        if not selected_roles:
+
+            raise ValueError(
+                "No matching roles found "
+                "in backup file"
+            )
+
+        results[
+            account_id
+        ] = {
+
+            "roles":
+            selected_roles
+        }
+
+        return results
+
+    raise ValueError(
+        f"Invalid restore scope: "
+        f"{restore_scope}"
+    )
+
+
+def parse_args():
+
+    parser = (
+        argparse.ArgumentParser()
+    )
+
+    parser.add_argument(
+        "--backup-file",
+        required=True
+    )
+
+    parser.add_argument(
+        "--restore-scope",
+        choices=[
+            "FULL",
+            "ACCOUNT",
+            "ROLE"
+        ],
+        required=True
+    )
+
+    parser.add_argument(
+        "--account-id"
+    )
+
+    parser.add_argument(
+        "--role-names"
+    )
+
+    parser.add_argument(
+        "--restore-profiles",
+        default="true"
+    )
+
+    parser.add_argument(
+        "--dry-run",
+        default="true"
+    )
+
+    return parser.parse_args()
+
+
+def main():
+
+    args = parse_args()
+
+    logger = get_logger()
+
+    backup_data = load_backup(
+        args.backup_file
+    )
+
     restore_profiles = (
-        ask_yes_no(
-            "Restore Instance Profiles?"
-        )
+
+        args.restore_profiles.lower()
+        ==
+        "true"
     )
 
     dry_run = (
-        ask_yes_no(
-            "Dry Run?"
+
+        args.dry_run.lower()
+        ==
+        "true"
+    )
+
+    restore_targets = (
+        get_roles_to_restore(
+
+            backup_data=
+            backup_data,
+
+            restore_scope=
+            args.restore_scope,
+
+            account_id=
+            args.account_id,
+
+            role_names=
+            args.role_names
         )
     )
 
@@ -351,9 +462,7 @@ def main():
     for (
         account_id,
         account_data
-    ) in backup_data[
-        "accounts"
-    ].items():
+    ) in restore_targets.items():
 
         try:
 
@@ -382,6 +491,7 @@ def main():
         except Exception as error:
 
             logger.error(
+
                 f"{account_id} | "
                 f"SESSION | "
                 f"{str(error)}"
@@ -391,13 +501,13 @@ def main():
 
             continue
 
-        roles = (
+        for metadata in (
+
             account_data[
                 "roles"
-            ]
-        )
+            ].values()
 
-        for metadata in roles.values():
+        ):
 
             try:
 
@@ -432,32 +542,33 @@ def main():
                 failed += 1
 
                 logger.error(
+
                     f"{account_id} | "
                     f"{metadata.get('role_name')} | "
                     f"{str(error)}"
                 )
 
     logger.info(
-        "=" * 60
+        "=" * 100
     )
 
     logger.info(
-        f"Restored: "
+        f"RESTORED : "
         f"{restored}"
     )
 
     logger.info(
-        f"Skipped: "
+        f"SKIPPED  : "
         f"{skipped}"
     )
 
     logger.info(
-        f"Failed: "
+        f"FAILED   : "
         f"{failed}"
     )
 
     logger.info(
-        "=" * 60
+        "=" * 100
     )
 
     if failed:
@@ -466,4 +577,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()

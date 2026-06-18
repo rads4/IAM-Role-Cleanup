@@ -1,3 +1,6 @@
+import os
+import argparse
+
 from pathlib import Path
 
 from modules.csv_reader import (
@@ -9,7 +12,8 @@ from modules.executor import (
 )
 
 from modules.logger import (
-    get_logger
+    get_logger,
+    print_banner
 )
 
 from modules.auth import (
@@ -20,87 +24,83 @@ from modules.role_backup import (
     RoleBackupManager
 )
 
+from modules.slack_notifier import (
+    SlackNotifier
+)
+
 from config.settings import (
-    BACKUP_DIR
+    BACKUP_DIR,
+    SLACK_ENABLED
 )
 
 
-def select_file(
-    directory,
-    pattern,
-    title
-):
+def parse_args():
 
-    path = Path(
-        directory
+    parser = (
+        argparse.ArgumentParser()
     )
 
-    if not path.exists():
-
-        raise Exception(
-            f"{directory} not found"
-        )
-
-    files = sorted(
-        path.glob(pattern)
+    parser.add_argument(
+        "--csv-file",
+        required=True
     )
 
-    if not files:
-
-        raise Exception(
-            f"No {title} found"
-        )
-
-    print(
-        f"\nAvailable {title}:\n"
+    parser.add_argument(
+        "--dry-run",
+        default="true"
     )
 
-    for index, file in enumerate(
-        files,
-        start=1
-    ):
+    parser.add_argument(
+        "--build-number",
+        default=""
+    )
 
-        print(
-            f"{index}. {file.name}"
-        )
+    parser.add_argument(
+        "--build-url",
+        default=""
+    )
 
-    while True:
+    parser.add_argument(
+        "--git-commit",
+        default=""
+    )
 
-        choice = input(
-            "\nSelect: "
-        ).strip()
-
-        try:
-
-            return str(
-                files[
-                    int(choice) - 1
-                ]
-            )
-
-        except (
-            ValueError,
-            IndexError
-        ):
-
-            print(
-                "Invalid selection"
-            )
+    return parser.parse_args()
 
 
 def main():
 
+    args = parse_args()
+
     logger = get_logger()
 
-    roles_csv = select_file(
-
-        "inputs",
-        "*.csv",
-        "Role CSV Files"
+    dry_run = (
+        args.dry_run.lower()
+        == "true"
     )
 
-    grouped_roles = load_roles(
-        roles_csv
+    print_banner(
+        logger,
+        "IAM ROLE CLEANER"
+    )
+
+    logger.info(
+        f"ACTION       : DELETE"
+    )
+
+    logger.info(
+        f"DRY_RUN      : {dry_run}"
+    )
+
+    logger.info(
+        f"CSV_FILE     : "
+        f"{args.csv_file}"
+    )
+
+    grouped_roles = (
+        load_roles(
+            args.csv_file
+        )
     )
 
     operator_session = (
@@ -116,12 +116,12 @@ def main():
     )
 
     logger.info(
-        f"Accounts found: "
+        f"ACCOUNTS     : "
         f"{len(grouped_roles)}"
     )
 
     logger.info(
-        f"Total roles: "
+        f"TOTAL ROLES  : "
         f"{total_roles}"
     )
 
@@ -132,7 +132,7 @@ def main():
     )
 
     logger.info(
-        f"Backup file initialized: "
+        f"BACKUP FILE  : "
         f"{backup_manager.get_backup_file_path()}"
     )
 
@@ -148,8 +148,36 @@ def main():
         backup_manager,
 
         operator_session=
-        operator_session
+        operator_session,
+
+        dry_run=
+        dry_run
     )
+
+    backup_manager.write_metadata(
+
+        action=
+        "DELETE",
+
+        dry_run=
+        dry_run,
+
+        build_number=
+        args.build_number,
+
+        build_url=
+        args.build_url,
+
+        git_commit=
+        args.git_commit
+    )
+
+    backup_manager.print_backup_json(
+        logger
+    )
+
+    error_csv = None
+    account_summary_csv = None
 
     if error_collector.count():
 
@@ -159,20 +187,106 @@ def main():
             exist_ok=True
         )
 
-        error_collector.write_to_csv(
+        error_csv = (
             "output/role_deletion_errors.csv"
         )
 
+        account_summary_csv = (
+            "output/account_error_summary.csv"
+        )
+
+        error_collector.write_to_csv(
+            error_csv
+        )
+
+        error_collector.write_account_summary(
+            account_summary_csv
+        )
+
         logger.warning(
-            "Error report generated: "
-            "output/role_deletion_errors.csv"
+            "Error report generated:"
+        )
+
+        logger.warning(
+            error_csv
         )
 
     error_collector.print_summary(
 
         logger,
+
         backup_manager.get_backup_file_path()
     )
+
+    if SLACK_ENABLED:
+
+        try:
+
+            slack_token = os.environ[
+                "SLACK_BOT_TOKEN"
+            ]
+
+            slack_channel = os.environ[
+                "SLACK_CHANNEL_ID"
+            ]
+
+            slack = (
+                SlackNotifier(
+
+                    token=
+                    slack_token,
+
+                    channel_id=
+                    slack_channel,
+
+                    logger=
+                    logger
+                )
+            )
+
+            slack.send_summary(
+
+                action=
+                "DELETE",
+
+                dry_run=
+                dry_run,
+
+                accounts=
+                len(grouped_roles),
+
+                roles=
+                total_roles,
+
+                build_number=
+                args.build_number,
+
+                build_url=
+                args.build_url
+            )
+
+            slack.upload_backup_bundle(
+
+                backup_file=
+                backup_manager.get_backup_file_path(),
+
+                metadata_file=
+                backup_manager.get_metadata_file_path(),
+
+                error_csv=
+                error_csv,
+
+                account_summary_csv=
+                account_summary_csv
+            )
+
+        except Exception as error:
+
+            logger.error(
+
+                f"Slack upload failed: "
+                f"{str(error)}"
+            )
 
 
 if __name__ == "__main__":

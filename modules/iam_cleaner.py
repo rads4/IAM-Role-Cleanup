@@ -1,6 +1,8 @@
 import time
 
-from botocore.exceptions import ClientError
+from botocore.exceptions import (
+    ClientError
+)
 
 from config.settings import (
     MAX_RETRY_ATTEMPTS,
@@ -42,9 +44,7 @@ def validate_role_identity(
         )
 
     arn_role_name = (
-        role_arn.split(
-            "/"
-        )[-1]
+        role_arn.split("/")[-1]
     )
 
     if arn_role_name != role_name:
@@ -52,8 +52,8 @@ def validate_role_identity(
         raise ValueError(
 
             f"RoleName mismatch. "
-            f"CSV Name={role_name}, "
-            f"ARN Name={arn_role_name}"
+            f"CSV={role_name}, "
+            f"ARN={arn_role_name}"
         )
 
 
@@ -114,108 +114,6 @@ def _retryable_call(
             )
 
 
-def _execute_deletion(
-    iam_client,
-    role_name,
-    dry_run=False
-):
-
-    paginator = (
-        iam_client.get_paginator(
-            "list_attached_role_policies"
-        )
-    )
-
-    for page in paginator.paginate(
-        RoleName=role_name
-    ):
-
-        for policy in page[
-            "AttachedPolicies"
-        ]:
-
-            if not dry_run:
-
-                _retryable_call(
-
-                    iam_client.detach_role_policy,
-
-                    RoleName=
-                    role_name,
-
-                    PolicyArn=
-                    policy[
-                        "PolicyArn"
-                    ]
-                )
-
-    paginator = (
-        iam_client.get_paginator(
-            "list_role_policies"
-        )
-    )
-
-    for page in paginator.paginate(
-        RoleName=role_name
-    ):
-
-        for policy_name in page[
-            "PolicyNames"
-        ]:
-
-            if not dry_run:
-
-                _retryable_call(
-
-                    iam_client.delete_role_policy,
-
-                    RoleName=
-                    role_name,
-
-                    PolicyName=
-                    policy_name
-                )
-
-    paginator = (
-        iam_client.get_paginator(
-            "list_instance_profiles_for_role"
-        )
-    )
-
-    for page in paginator.paginate(
-        RoleName=role_name
-    ):
-
-        for profile in page[
-            "InstanceProfiles"
-        ]:
-
-            if not dry_run:
-
-                _retryable_call(
-
-                    iam_client.remove_role_from_instance_profile,
-
-                    InstanceProfileName=
-                    profile[
-                        "InstanceProfileName"
-                    ],
-
-                    RoleName=
-                    role_name
-                )
-
-    if not dry_run:
-
-        _retryable_call(
-
-            iam_client.delete_role,
-
-            RoleName=
-            role_name
-        )
-
-
 def delete_role_fully(
     iam_client,
     account_id,
@@ -223,6 +121,7 @@ def delete_role_fully(
     role_arn,
     backup_manager,
     error_collector,
+    logger,
     dry_run=False
 ):
 
@@ -236,6 +135,11 @@ def delete_role_fully(
 
         role_arn=
         role_arn
+    )
+
+    logger.info(
+        f"BACKUP START | "
+        f"{role_name}"
     )
 
     try:
@@ -259,32 +163,6 @@ def delete_role_fully(
             )
         )
 
-    except Exception as error:
-
-        error_collector.increment(
-            "BACKUP",
-            "failed"
-        )
-
-        error_collector.increment(
-            "SKIPPED",
-            None
-        )
-
-        error_collector.add(
-
-            account_id,
-            role_name,
-            "BACKUP",
-            "CAPTURE_ROLE_METADATA",
-            type(error).__name__,
-            str(error)
-        )
-
-        return "backup_failed"
-
-    try:
-
         backup_manager.persist_role_backup(
 
             account_id=
@@ -302,6 +180,11 @@ def delete_role_fully(
             "success"
         )
 
+        logger.info(
+            f"BACKUP SUCCESS | "
+            f"{role_name}"
+        )
+
     except Exception as error:
 
         error_collector.increment(
@@ -316,150 +199,216 @@ def delete_role_fully(
 
         error_collector.add(
 
+            account_id=
             account_id,
+
+            role_name=
             role_name,
+
+            role_arn=
+            role_arn,
+
+            stage=
             "BACKUP",
-            "PERSIST_ROLE_BACKUP",
+
+            operation=
+            "CAPTURE_ROLE_METADATA",
+
+            error_type=
             type(error).__name__,
+
+            message=
             str(error)
+        )
+
+        logger.error(
+
+            f"BACKUP FAILED | "
+            f"{role_name} | "
+            f"{str(error)}"
         )
 
         return "backup_failed"
 
-    for attempt in range(
-        1,
-        MAX_RETRY_ATTEMPTS + 1
-    ):
+    if dry_run:
 
-        try:
+        logger.info(
 
-            _execute_deletion(
+            f"DRY RUN | "
+            f"DELETE SKIPPED | "
+            f"{role_name}"
+        )
 
-                iam_client=
-                iam_client,
+        error_collector.increment(
+            "DELETE",
+            "success"
+        )
 
-                role_name=
-                role_name,
+        return "dry_run"
 
-                dry_run=
-                dry_run
+    try:
+
+        logger.info(
+            f"DELETE START | "
+            f"{role_name}"
+        )
+
+        paginator = (
+            iam_client.get_paginator(
+                "list_attached_role_policies"
             )
+        )
 
-            error_collector.increment(
-                "DELETE",
-                "success"
-            )
+        for page in paginator.paginate(
+            RoleName=role_name
+        ):
 
-            return "success"
+            for policy in page[
+                "AttachedPolicies"
+            ]:
 
-        except ClientError as error:
+                logger.info(
 
-            code = (
-                error.response[
-                    "Error"
-                ][
-                    "Code"
-                ]
-            )
-
-            if (
-                code
-                ==
-                "NoSuchEntity"
-            ):
-
-                error_collector.increment(
-                    "DELETE",
-                    "failed"
+                    f"DETACH POLICY | "
+                    f"{policy['PolicyArn']}"
                 )
 
-                error_collector.add(
+                _retryable_call(
 
-                    account_id,
+                    iam_client.detach_role_policy,
+
+                    RoleName=
                     role_name,
-                    "DELETE",
-                    "DELETE_ROLE",
-                    code,
-                    str(error)
+
+                    PolicyArn=
+                    policy["PolicyArn"]
                 )
 
-                raise
+        paginator = (
+            iam_client.get_paginator(
+                "list_role_policies"
+            )
+        )
 
-            if (
-                code
-                not in
-                RETRYABLE_CODES
-            ):
+        for page in paginator.paginate(
+            RoleName=role_name
+        ):
 
-                error_collector.increment(
-                    "DELETE",
-                    "failed"
+            for policy_name in page[
+                "PolicyNames"
+            ]:
+
+                logger.info(
+
+                    f"DELETE INLINE POLICY | "
+                    f"{policy_name}"
                 )
 
-                error_collector.add(
+                _retryable_call(
 
-                    account_id,
+                    iam_client.delete_role_policy,
+
+                    RoleName=
                     role_name,
-                    "DELETE",
-                    "DELETE_ROLE",
-                    code,
-                    str(error)
+
+                    PolicyName=
+                    policy_name
                 )
 
-                raise
+        paginator = (
+            iam_client.get_paginator(
+                "list_instance_profiles_for_role"
+            )
+        )
 
-            if (
-                attempt
-                ==
-                MAX_RETRY_ATTEMPTS
-            ):
+        for page in paginator.paginate(
+            RoleName=role_name
+        ):
 
-                error_collector.increment(
-                    "DELETE",
-                    "failed"
+            for profile in page[
+                "InstanceProfiles"
+            ]:
+
+                logger.info(
+
+                    f"REMOVE PROFILE | "
+                    f"{profile['InstanceProfileName']}"
                 )
 
-                error_collector.add(
+                _retryable_call(
 
-                    account_id,
-                    role_name,
-                    "DELETE",
-                    "DELETE_ROLE",
-                    code,
-                    str(error)
+                    iam_client.remove_role_from_instance_profile,
+
+                    InstanceProfileName=
+                    profile[
+                        "InstanceProfileName"
+                    ],
+
+                    RoleName=
+                    role_name
                 )
 
-                raise
+        logger.info(
+            f"DELETE ROLE | "
+            f"{role_name}"
+        )
 
-            delay = (
-                BASE_BACKOFF_SECONDS *
-                (
-                    2 **
-                    (
-                        attempt - 1
-                    )
-                )
-            )
+        _retryable_call(
 
-            time.sleep(
-                delay
-            )
+            iam_client.delete_role,
 
-        except Exception as error:
+            RoleName=
+            role_name
+        )
 
-            error_collector.increment(
-                "DELETE",
-                "failed"
-            )
+        error_collector.increment(
+            "DELETE",
+            "success"
+        )
 
-            error_collector.add(
+        logger.info(
+            f"DELETE SUCCESS | "
+            f"{role_name}"
+        )
 
-                account_id,
-                role_name,
-                "DELETE",
-                "DELETE_ROLE",
-                type(error).__name__,
-                str(error)
-            )
+        return "success"
 
-            raise
+    except Exception as error:
+
+        error_collector.increment(
+            "DELETE",
+            "failed"
+        )
+
+        error_collector.add(
+
+            account_id=
+            account_id,
+
+            role_name=
+            role_name,
+
+            role_arn=
+            role_arn,
+
+            stage=
+            "DELETE",
+
+            operation=
+            "DELETE_ROLE",
+
+            error_type=
+            type(error).__name__,
+
+            message=
+            str(error)
+        )
+
+        logger.error(
+
+            f"DELETE FAILED | "
+            f"{role_name} | "
+            f"{str(error)}"
+        )
+
+        raise

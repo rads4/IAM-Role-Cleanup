@@ -10,8 +10,6 @@ ERROR_REPORT_PREFIX = (
     "role_deletion_errors"
 )
 
-DRY_RUN = True
-
 BACKUP_DIR = "backups"
 
 OUTPUT_DIR = "output"
@@ -28,6 +26,9 @@ ASSUME_ROLE_SESSION_NAME = (
     "iam-cleanup-session"
 )
 
-TRUSTED_PRINCIPAL_ARN = (
-    "arn:aws:iam::738759745978:user/Radz"
+JENKINS_MASTER_ROLE_ARN = (
+    "arn:aws:iam::685502069032:role/"
+    "ck-ops-jenkins-master-instance-iam-role"
 )
+
+SLACK_ENABLED = True

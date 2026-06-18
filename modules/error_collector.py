@@ -3,7 +3,9 @@ import threading
 
 from pathlib import Path
 
-from datetime import datetime
+from datetime import (
+    datetime
+)
 
 
 class ErrorCollector:
@@ -12,21 +14,26 @@ class ErrorCollector:
 
         self.errors = []
 
-        self.lock = threading.Lock()
+        self.lock = (
+            threading.Lock()
+        )
 
         self.stats = {
 
             "BACKUP": {
+
                 "success": 0,
                 "failed": 0
             },
 
             "DELETE": {
+
                 "success": 0,
                 "failed": 0
             },
 
             "RESTORE": {
+
                 "success": 0,
                 "failed": 0
             },
@@ -41,7 +48,8 @@ class ErrorCollector:
         stage,
         operation,
         error_type,
-        message
+        message,
+        role_arn=None
     ):
 
         with self.lock:
@@ -56,6 +64,9 @@ class ErrorCollector:
 
                 "role_name":
                 role_name,
+
+                "role_arn":
+                role_arn or "",
 
                 "stage":
                 stage,
@@ -86,35 +97,11 @@ class ErrorCollector:
 
                 return
 
-            if (
-                stage
-                not in self.stats
-            ):
-
-                raise ValueError(
-                    f"Unknown stage: {stage}"
-                )
-
-            if (
-                result
-                not in self.stats[
-                    stage
-                ]
-            ):
-
-                raise ValueError(
-                    f"Unknown result: {result}"
-                )
-
             self.stats[
                 stage
             ][
                 result
             ] += 1
-
-    def get_stats(self):
-
-        return self.stats
 
     def count(self):
 
@@ -125,6 +112,10 @@ class ErrorCollector:
     def get_all(self):
 
         return self.errors
+
+    def get_stats(self):
+
+        return self.stats
 
     def write_to_csv(
         self,
@@ -138,6 +129,7 @@ class ErrorCollector:
         Path(
             file_name
         ).parent.mkdir(
+
             parents=True,
             exist_ok=True
         )
@@ -157,6 +149,7 @@ class ErrorCollector:
                     "timestamp",
                     "account_id",
                     "role_name",
+                    "role_arn",
                     "stage",
                     "operation",
                     "error_type",
@@ -184,6 +177,7 @@ class ErrorCollector:
             ]
 
             account_summary.setdefault(
+
                 account_id,
                 0
             )
@@ -195,6 +189,7 @@ class ErrorCollector:
         Path(
             file_name
         ).parent.mkdir(
+
             parents=True,
             exist_ok=True
         )
@@ -210,6 +205,7 @@ class ErrorCollector:
             )
 
             writer.writerow([
+
                 "account_id",
                 "error_count"
             ])
@@ -222,6 +218,7 @@ class ErrorCollector:
             ):
 
                 writer.writerow([
+
                     account_id,
                     count
                 ])
@@ -233,15 +230,15 @@ class ErrorCollector:
     ):
 
         logger.info(
-            "=" * 60
+            "=" * 100
         )
 
         logger.info(
-            "Execution Summary"
+            "EXECUTION SUMMARY"
         )
 
         logger.info(
-            "=" * 60
+            "=" * 100
         )
 
         for stage in [
@@ -254,30 +251,69 @@ class ErrorCollector:
 
             logger.info(
 
-                f"{stage:<12} "
-                f"Success="
-                f"{self.stats[stage]['success']} "
-                f"Failed="
+                f"{stage:<10} | "
+                f"SUCCESS="
+                f"{self.stats[stage]['success']} | "
+                f"FAILED="
                 f"{self.stats[stage]['failed']}"
             )
 
         logger.info(
-            f"SKIPPED     "
+
+            f"SKIPPED    | "
             f"{self.stats['SKIPPED']}"
         )
 
         if backup_file:
 
             logger.info(
-                f"Backup File: "
+
+                f"BACKUP FILE | "
                 f"{backup_file}"
             )
 
         logger.info(
-            f"Total Errors: "
+
+            f"TOTAL ERRORS | "
             f"{self.count()}"
         )
 
         logger.info(
-            "=" * 60
+            "=" * 100
         )
+
+        if self.errors:
+
+            logger.info(
+                "ERROR DETAILS"
+            )
+
+            logger.info(
+                "=" * 100
+            )
+
+            for error in self.errors:
+
+                logger.error(
+
+                    f"ACCOUNT_ID="
+                    f"{error['account_id']} | "
+
+                    f"ROLE_NAME="
+                    f"{error['role_name']} | "
+
+                    f"ROLE_ARN="
+                    f"{error['role_arn']} | "
+
+                    f"STAGE="
+                    f"{error['stage']} | "
+
+                    f"OPERATION="
+                    f"{error['operation']} | "
+
+                    f"ERROR_TYPE="
+                    f"{error['error_type']} | "
+
+                    f"MESSAGE="
+                    f"{error['error_message']}"
+                )

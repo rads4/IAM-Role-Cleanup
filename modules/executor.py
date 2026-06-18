@@ -8,7 +8,6 @@ from threading import Lock
 from config.settings import (
     ACCOUNT_WORKERS,
     ROLE_WORKERS,
-    DRY_RUN
 )
 
 from modules.auth import (
@@ -29,12 +28,18 @@ from modules.iam_cleaner import (
     delete_role_fully
 )
 
+from modules.logger import (
+    print_account_header,
+    print_role_header
+)
+
 
 def execute(
     grouped_roles,
     logger,
     backup_manager,
-    operator_session
+    operator_session,
+    dry_run
 ):
 
     error_collector = ErrorCollector()
@@ -42,9 +47,7 @@ def execute(
     progress_lock = Lock()
 
     total_roles = sum(
-
         len(roles)
-
         for roles
         in grouped_roles.values()
     )
@@ -67,9 +70,19 @@ def execute(
             "role_arn"
         ]
 
-        logger.info(
-            f"Processing role: "
-            f"{role_name}"
+        print_role_header(
+
+            logger=
+            logger,
+
+            account_id=
+            account_id,
+
+            role_name=
+            role_name,
+
+            role_arn=
+            role_arn
         )
 
         try:
@@ -95,15 +108,20 @@ def execute(
                 error_collector,
 
                 dry_run=
-                DRY_RUN
+                dry_run,
+
+                logger=
+                logger
             )
 
         except Exception as error:
 
             logger.error(
-                f"{account_id} | "
-                f"{role_name} | "
-                f"{str(error)}"
+
+                f"ACCOUNT_ID={account_id} | "
+                f"ROLE_NAME={role_name} | "
+                f"ROLE_ARN={role_arn} | "
+                f"ERROR={str(error)}"
             )
 
             result = "failed"
@@ -113,15 +131,18 @@ def execute(
             completed_roles += 1
 
             logger.info(
-                f"Progress: "
+
+                f"PROGRESS : "
                 f"{completed_roles}/"
                 f"{total_roles}"
             )
 
         logger.info(
-            f"Completed role: "
-            f"{role_name} "
-            f"({result})"
+
+            f"ROLE RESULT | "
+            f"{account_id} | "
+            f"{role_name} | "
+            f"{result}"
         )
 
     def process_account(
@@ -129,9 +150,9 @@ def execute(
         roles
     ):
 
-        logger.info(
-            f"Processing account "
-            f"{account_id}"
+        print_account_header(
+            logger,
+            account_id
         )
 
         cleaner_role_arn = (
@@ -143,11 +164,13 @@ def execute(
         try:
 
             logger.info(
-                f"Assuming cleaner role: "
+
+                f"ASSUMING CLEANER ROLE : "
                 f"{cleaner_role_arn}"
             )
 
             cleaner_session = (
+
                 assume_role(
 
                     session=
@@ -157,19 +180,24 @@ def execute(
                     cleaner_role_arn,
 
                     session_name=
-                    f"cleanup-"
-                    f"{account_id}"
+                    f"cleanup-{account_id}"
                 )
             )
 
             validate_session_account(
+
                 cleaner_session,
                 account_id
+            )
+
+            logger.info(
+                "SESSION VALIDATED"
             )
 
         except Exception as error:
 
             logger.error(
+
                 f"{account_id} | "
                 f"ACCOUNT_INIT | "
                 f"{str(error)}"
@@ -182,6 +210,9 @@ def execute(
 
                 role_name=
                 "ACCOUNT_INIT",
+
+                role_arn=
+                cleaner_role_arn,
 
                 stage=
                 "DELETE",
@@ -207,6 +238,7 @@ def execute(
         try:
 
             validation_result = (
+
                 validate_cleaner_role(
                     iam_client,
                     logger
@@ -215,6 +247,12 @@ def execute(
 
             if not validation_result:
 
+                logger.error(
+
+                    f"{account_id} | "
+                    f"CLEANER ROLE VALIDATION FAILED"
+                )
+
                 error_collector.add(
 
                     account_id=
@@ -222,6 +260,9 @@ def execute(
 
                     role_name=
                     "ACCOUNT_INIT",
+
+                    role_arn=
+                    cleaner_role_arn,
 
                     stage=
                     "DELETE",
@@ -236,14 +277,16 @@ def execute(
                     "Cleaner role validation failed"
                 )
 
-                logger.error(
-                    f"{account_id} | "
-                    f"Cleaner role validation failed"
-                )
-
                 return
 
         except Exception as error:
+
+            logger.error(
+
+                f"{account_id} | "
+                f"CLEANER VALIDATION ERROR | "
+                f"{str(error)}"
+            )
 
             error_collector.add(
 
@@ -252,6 +295,9 @@ def execute(
 
                 role_name=
                 "ACCOUNT_INIT",
+
+                role_arn=
+                cleaner_role_arn,
 
                 stage=
                 "DELETE",
@@ -264,12 +310,6 @@ def execute(
 
                 message=
                 str(error)
-            )
-
-            logger.error(
-                f"{account_id} | "
-                f"Cleaner validation error | "
-                f"{str(error)}"
             )
 
             return
@@ -312,8 +352,10 @@ def execute(
                 roles
             )
 
-            for account_id,
-            roles
+            for (
+                account_id,
+                roles
+            )
             in grouped_roles.items()
 
         ]
