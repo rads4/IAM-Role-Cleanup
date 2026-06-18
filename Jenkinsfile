@@ -9,25 +9,25 @@ pipeline {
         choice(
             name: 'ACTION',
             choices: ['DELETE', 'RESTORE'],
-            description: 'Select operation mode'
+            description: 'IAM operation mode'
         )
 
         booleanParam(
             name: 'DRY_RUN',
             defaultValue: true,
-            description: 'If true → no actual IAM changes'
+            description: 'TRUE = simulate only, FALSE = real execution'
         )
 
         choice(
             name: 'RESTORE_SCOPE',
             choices: ['FULL', 'ACCOUNT', 'ROLE'],
-            description: 'Used only for RESTORE'
+            description: 'RESTORE granularity (used only for RESTORE)'
         )
 
         string(
             name: 'ACCOUNT_ID',
             defaultValue: '',
-            description: 'Used for ACCOUNT/ROLE restore'
+            description: 'Required for ACCOUNT or ROLE restore'
         )
 
         string(
@@ -39,7 +39,7 @@ pipeline {
         string(
             name: 'BACKUP_FILE',
             defaultValue: '',
-            description: 'Selected backup JSON from GitLab branch (RESTORE only)'
+            description: 'Selected backup file from iam-role-cleaner-backups branch'
         )
     }
 
@@ -57,7 +57,7 @@ pipeline {
             }
         }
 
-        stage('Checkout Code') {
+        stage('Checkout') {
             steps {
                 checkout scm
             }
@@ -66,17 +66,19 @@ pipeline {
         stage('Install Dependencies') {
             steps {
                 sh '''
-                    pip install --upgrade pip
+                    python3 -m pip install --upgrade pip
                     pip install boto3 slack_sdk
                 '''
             }
         }
 
-        stage('Execute IAM Role Cleaner') {
+        stage('Execute IAM Cleaner') {
             steps {
                 script {
 
                     if (params.ACTION == 'DELETE') {
+
+                        echo "Starting DELETE flow"
 
                         sh """
                         python3 main.py \
@@ -89,14 +91,15 @@ pipeline {
 
                     } else {
 
+                        echo "Starting RESTORE flow"
+
                         sh """
                         python3 restore_roles.py \
                           --backup-file ${params.BACKUP_FILE} \
                           --restore-scope ${params.RESTORE_SCOPE} \
                           --account-id ${params.ACCOUNT_ID} \
                           --role-names "${params.ROLE_NAMES}" \
-                          --dry-run ${params.DRY_RUN} \
-                          --restore-profiles true
+                          --dry-run ${params.DRY_RUN}
                         """
                     }
                 }
@@ -113,30 +116,87 @@ pipeline {
             }
         }
 
-        stage('GitLab Backup Push') {
+        stage('Push Backup Branch') {
+
             when {
-                expression { params.ACTION == 'DELETE' }
-            }
-            steps {
-                script {
-                    echo "Future enhancement: push backups to git branch iam-role-cleaner-backups"
+                expression {
+                    params.ACTION == 'DELETE' &&
+                    !params.DRY_RUN
                 }
+            }
+
+            steps {
+
+                script {
+
+                    sh '''
+                    echo "======================================"
+                    echo "PUSHING BACKUPS TO BACKUP BRANCH"
+                    echo "======================================"
+
+                    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+                    git fetch origin
+
+                    if git show-ref --verify --quiet refs/heads/iam-role-cleaner-backups
+                    then
+                        git checkout iam-role-cleaner-backups
+                    else
+                        git checkout -b iam-role-cleaner-backups origin/iam-role-cleaner-backups
+                    fi
+
+                    mkdir -p backup-history
+
+                    TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
+
+                    TARGET_DIR="backup-history/${TIMESTAMP}"
+
+                    mkdir -p "${TARGET_DIR}"
+
+                    cp -r backups/* "${TARGET_DIR}/" 2>/dev/null || true
+
+                    cp -r output/* "${TARGET_DIR}/" 2>/dev/null || true
+
+                    git add .
+
+                    git commit \
+                    -m "IAM Cleaner Backup - Build ${BUILD_NUMBER}" \
+                    || true
+
+                    git push origin iam-role-cleaner-backups
+
+                    git checkout ${CURRENT_BRANCH}
+
+                    echo "Backup push completed"
+                    '''
+                }
+            }
+        }
+
+        stage('Summary') {
+            steps {
+                echo "======================================"
+                echo "IAM ROLE CLEANER EXECUTION COMPLETE"
+                echo "ACTION      : ${params.ACTION}"
+                echo "DRY RUN     : ${params.DRY_RUN}"
+                echo "BUILD       : ${env.BUILD_NUMBER}"
+                echo "======================================"
             }
         }
     }
 
     post {
 
-        always {
-            echo "Pipeline execution completed"
-        }
-
         success {
-            echo "IAM Role Cleaner SUCCESS"
+            echo "Pipeline SUCCESS"
         }
 
         failure {
-            echo "IAM Role Cleaner FAILED - check logs"
+            echo "Pipeline FAILED - check logs"
+        }
+
+        always {
+            cleanWs()
         }
     }
 }

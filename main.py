@@ -33,7 +33,6 @@ from config.settings import (
     SLACK_ENABLED
 )
 
-
 def parse_args():
 
     parser = (
