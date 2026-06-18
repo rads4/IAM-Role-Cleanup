@@ -1,0 +1,15 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AssumeCleanerRoles",
+      "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": [
+        "arn:aws:iam::685502069032:role/ck-iam-role-cleaner",
+        "arn:aws:iam::970542993128:role/ck-iam-role-cleaner",
+        "arn:aws:iam::275595855473:role/ck-iam-role-cleaner"
+      ]
+    }
+  ]
+}
