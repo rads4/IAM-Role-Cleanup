@@ -1,4 +1,4 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 
 Description: >
   CloudKeeper IAM Role Cleaner.
@@ -6,13 +6,10 @@ Description: >
   IAM role backup, deletion and restore operations.
 
 Resources:
-
   CleanerRole:
-
     Type: AWS::IAM::Role
 
     Properties:
-
       RoleName: ck-iam-role-cleaner
 
       Description: >
@@ -21,37 +18,29 @@ Resources:
       MaxSessionDuration: 3600
 
       AssumeRolePolicyDocument:
-
         Version: "2012-10-17"
 
         Statement:
-
           - Effect: Allow
 
             Principal:
-
-              AWS: arn:aws:iam::738759745978:user/Radz
+              AWS: arn:aws:iam::685502069032:role/ck-ops-jenkins-master-instance-iam-role
 
             Action:
-
               - sts:AssumeRole
 
       Policies:
-
         - PolicyName: iam-role-cleaner-policy
 
           PolicyDocument:
-
             Version: "2012-10-17"
 
             Statement:
-
               - Sid: BackupPermissions
 
                 Effect: Allow
 
                 Action:
-
                   - iam:GetRole
                   - iam:GetRolePolicy
                   - iam:ListRolePolicies
@@ -66,7 +55,6 @@ Resources:
                 Effect: Allow
 
                 Action:
-
                   - iam:DetachRolePolicy
                   - iam:DeleteRolePolicy
                   - iam:RemoveRoleFromInstanceProfile
@@ -79,7 +67,6 @@ Resources:
                 Effect: Allow
 
                 Action:
-
                   - iam:CreateRole
                   - iam:AttachRolePolicy
                   - iam:PutRolePolicy
@@ -87,17 +74,13 @@ Resources:
 
                 Resource: "*"
 
-
 Outputs:
-
   CleanerRoleArn:
-
     Description: Cleaner Role ARN
 
     Value: !GetAtt CleanerRole.Arn
 
   CleanerRoleName:
-
     Description: Cleaner Role Name
 
     Value: !Ref CleanerRole
